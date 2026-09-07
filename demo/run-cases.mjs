@@ -109,6 +109,15 @@ const send = (method, params) => new Promise((res) => { const n = ++id; pending.
 await new Promise((r) => ws.addEventListener('open', r, { once: true }));
 await send('Runtime.enable');
 
+/* A remote page can still be navigating when its target shows up, and evaluating into a context
+   that is about to be replaced comes back empty. file:// loads too fast to ever show this. */
+for (let i = 0; i < 160; i++) {
+  const s = await send('Runtime.evaluate', { expression: 'document.readyState + "|" + location.href', returnByValue: true });
+  const v = s.result && s.result.result && s.result.result.value;
+  if (typeof v === 'string' && v.startsWith('complete|') && !v.endsWith('|about:blank')) break;
+  await sleep(250);
+}
+
 /* The page sets window.__hyaliteCases when its last case has run. */
 const r = await send('Runtime.evaluate', {
   expression: `new Promise((res) => {
@@ -126,7 +135,7 @@ const r = await send('Runtime.evaluate', {
 clearTimeout(guard);
 
 const value = r.result && r.result.result && r.result.result.value;
-if (!value) die('no result came back from the page', 2);
+if (!value) die('no result came back from the page: ' + JSON.stringify(r.result || r).slice(0, 500), 2);
 const { ok, results } = JSON.parse(value);
 console.log(`${ok ? 'ALL OK' : 'FAILURES'}  ·  ${path.basename(BROWSER)}  ·  ${results.length} cases`);
 results.forEach((line) => console.log(line));

@@ -57,6 +57,14 @@
   .hud .hint{opacity:.6}
   .hud .warn{color:#ffb4a2}
   .hud input[type=file]{display:none}
+  /* phones: stack everything, no absolute positioning */
+  @media (max-width: 760px){
+    body{overflow:auto;height:auto;min-height:100vh}
+    .big{position:static;font-size:22vw;margin:12px 0 4px}
+    .slot{position:relative!important;left:auto!important;top:auto!important;width:min(380px,92vw);margin:18px auto 34px;cursor:default}
+    .hud{position:static;margin:12px}
+    .hud label{grid-template-columns:82px 1fr 52px}.hud input[type=range]{width:100%}
+  }
 </style></head>
 <body>
 <div class="big">HYALITE</div>

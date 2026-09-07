@@ -12,21 +12,24 @@
  *
  * Usage
  *   CSS:  .glass { backdrop-filter: var(--hyalite, blur(6px)); -webkit-backdrop-filter: var(--hyalite, blur(6px)); }
- *   JS:   Hyalite.watch(document.body, '.glass', { bevel: 16, thickness: 10, blur: 3 });
- *         Hyalite.attach(el, opts) / Hyalite.detach(el)     // manual
- *         Hyalite.setOpts({ blur: 1 })                        // retune everything, returns a Promise
- *         Hyalite.info()                                      // { maxDisplacement, bevel, mapSize } of the last build
- *         Hyalite.supported()                                 // true only on Chromium
+ *   JS:   const w = Hyalite.watch(document.body, '.glass', { bevel: 16, thickness: 10, blur: 3 });  w.stop()
+ *         Hyalite.attach(el, opts) / Hyalite.detach(el) / Hyalite.refresh(el)
+ *         Hyalite.setOpts({ blur: 1 })      // retune everything, returns a Promise (a newer call cancels an older one)
+ *         Hyalite.info()                    // { maxDisplacement, bevel, mapSize } of the last build
+ *         Hyalite.supported()               // true only where SVG backdrop filters really render (Chromium)
  *
- * Options
- *   bevel        width of the bent zone along the edge, px (clamped to the corner radius)
+ * Options (all clamped to sane ranges)
+ *   bevel        width of the bent zone along the edge, px. Clamped to the largest corner radius
  *   thickness    glass thickness, px — drives how far the edge pulls the backdrop inward
  *   blur         frost in the centre, px (feGaussianBlur stdDeviation)
- *   dispersion   chromatic aberration, 0–0.16 (0 = single pass, cheaper)
- *   rim          geometry-aware edge light, 0–1.6 (0 = off)
- *   materialize  ms — on first build, ramp displacement + rim from 0 (Apple's "materialize")
+ *   dispersion   chromatic aberration, 0–0.5 (0 = single pass, cheaper)
+ *   rim          geometry-aware edge light, 0–4 (0 = off)
+ *   materialize  ms — on attach, ramp displacement + rim from 0 (Apple's "materialize")
+ *   settle       ms — while an element keeps resizing it shows a plain blur; `settle` ms after the
+ *                last change the map is rebuilt once and the refraction ramps back in.
+ *                0 = live mode: throttled rebuilds (≤ 1 per 90 ms) with the old map stretched meanwhile.
  *   self         true when the element uses `filter:` on itself instead of `backdrop-filter`
- *                (displacement only: no blur, no dispersion, no rim — see notes below)
+ *                (displacement only: no blur, no dispersion, no rim — see notes)
  *   onBuild(info) called after every map build
  *
  * Three rules learned the hard way (each one leaves a visible artifact if broken)
@@ -39,36 +42,50 @@
  *      "pull down" to "pull right" is spread along a longer arc — otherwise corners look like a ridge.
  *
  * Notes
+ *   · Filters are cached by geometry + options and shared; the materialize ramp runs on a private
+ *     clone of the shared filter so animating one element never touches another.
  *   · `self` mode exists because the 3-pass dispersion sum is only valid for opaque sources.
  *     On a translucent layer alpha is added three times and clamped, which darkens the colour.
  *   · `--hyalite` is an inherited custom property: consume it only on the attached element.
- *   · Maps for large elements are downsampled (MAX_MAP_PX); the field is smooth, feImage
- *     stretches it back without visible loss.
- *   · Sizes come from offsetWidth/Height (layout box, transform-proof); % radii are supported.
- *   · Nothing is written when unsupported (Firefox reports support but paints nothing for
- *     backdrop-filter:url(), Safari silently drops the SVG part), so the CSS fallback wins.
- *   · Respects prefers-reduced-motion (no materialize).
+ *   · Maps for large elements are downsampled (MAX_MAP_PX); the field is smooth, feImage stretches
+ *     it back without visible loss.
+ *   · Sizes come from offsetWidth/Height (layout box, transform-proof). Circular per-corner radii
+ *     are exact; elliptical radii use their horizontal value; % radii resolve against the shorter side.
+ *   · Nothing is written when unsupported, so the CSS fallback wins. Firefox renders the element
+ *     unfiltered for SVG backdrop filters; Safari keeps the blur only (a WebKit implementation is in review).
+ *   · Respects prefers-reduced-motion (no ramps).
  *   · feImage uses a data: URL — a strict CSP needs `img-src data:`.
  */
 (function (root) {
   'use strict';
   if (root.Hyalite) return;
 
+  const VAR = '--hyalite';
   const N_GLASS = 1.5;             // refractive index of ordinary glass
-  const MAX_SLOPE = 0.85;          // max decay slope of the displacement (see rule 1)
+  const MAX_SLOPE = 0.85;          // max decay slope of the displacement (rule 1)
   const LIGHT = norm(-0.35, -1);   // light from the upper left (screen y points down)
-  const DEFAULTS = { bevel: 16, thickness: 10, blur: 3, dispersion: 0.05, rim: 0.45, materialize: 0, self: false };
-  const REBUILD_MIN_MS = 90;       // throttle for elements that keep resizing (streaming text)
+  const DEFAULTS = { bevel: 16, thickness: 10, blur: 3, dispersion: 0.05, rim: 0.45, materialize: 0, settle: 120, self: false };
+  const LIMITS = { bevel: [1, 400], thickness: [0, 400], blur: [0, 64], dispersion: [0, 0.5], rim: [0, 4], materialize: [0, 10000], settle: [0, 10000] };
+  const LIVE_MIN_MS = 90;          // live mode: throttle for continuous resizes
+  const SETTLE_RAMP_MS = 160;      // after a settle rebuild the refraction ramps back in
   const MAX_MAP_PX = 320000;       // ≈ 565×565: larger elements get a downsampled map
 
   let host = null;                 // hidden <svg> holding every <filter>
-  let seq = 0;
-  const filters = new Map();       // key → { id, refs, el, dms, rim }
-  const bound = new Map();         // element → { key, opts, ro, timer, pending, last, byWatcher }
-  let watcher = null;
-  let lastInfo = null;
+  let seq = 0, optsGen = 0, lastInfo = null;
+  const filters = new Map();       // key → { id, refs, el }
+  const bound = new Map();         // element → state
+  const watchers = new Set();
 
   function norm(x, y) { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; }
+  function sanitize(o) {
+    const s = Object.assign({}, o);
+    for (const k in LIMITS) if (k in s) {
+      const v = +s[k], lim = LIMITS[k];
+      s[k] = Number.isFinite(v) ? Math.min(lim[1], Math.max(lim[0], v)) : DEFAULTS[k];
+    }
+    if ('self' in s) s.self = !!s.self;
+    return s;
+  }
 
   function ensureHost() {
     if (host) return host;
@@ -103,10 +120,11 @@
     return { disp: (T0 + B * s) * Math.tan(alpha - beta), tilt: Math.sin(alpha) };
   }
 
-  /* Build the map. Returns { url, maxd, size } */
+  /* Build the map. Returns { url, maxd } */
   function buildMap(W, H, radii, o) {
-    // Clamp the bevel to the *largest* corner: a small corner (e.g. a 6px "tail" on a chat
-    // bubble) must not flatten the refraction along the whole edge.
+    // The bevel is clamped to the *largest* corner: a small corner (a 6px "tail" on a chat bubble)
+    // must not flatten the refraction along the whole edge. Near such a corner the depth field
+    // kinks on the SDF's medial axis, but the direction field below is smooth, so the crease is faint.
     const rMax = Math.max(1, ...radii);
     const B = Math.max(1, Math.min(o.bevel, rMax, Math.floor(Math.min(W, H) / 2) - 1));
     // Displacement table with the no-fold constraint, built from the inner edge outward
@@ -200,7 +218,7 @@
   }
 
   /* Corner radii in px. Computed values may be "16px", "50%" or "16px 20px" (elliptical — the
-     horizontal one is used); percentages are taken against the shorter side. */
+     horizontal one is used); percentages resolve against the shorter side. */
   function radiiOf(el, W, H) {
     const cs = getComputedStyle(el);
     const one = (v) => {
@@ -225,9 +243,6 @@
       const id = 'hyalite-' + (++seq);
       const map = buildMap(W, H, radii, o);
       rec = { id, refs: 0, el: buildFilter(id, W, H, map, o) };
-      rec.dms = Array.from(rec.el.querySelectorAll('feDisplacementMap')).map((n) => ({ n, s: +n.getAttribute('scale') }));
-      const fa = rec.el.querySelector('feFuncA');
-      rec.rim = fa ? { n: fa, s: +fa.getAttribute('slope') } : null;
       ensureHost().appendChild(rec.el);
       filters.set(key, rec);
       if (typeof o.onBuild === 'function') o.onBuild(lastInfo);
@@ -241,7 +256,11 @@
     if (--rec.refs <= 0) { rec.el.remove(); filters.delete(key); }
   }
 
-  function apply(el) {
+  const setFallback = (el, st) => el.style.setProperty(VAR, st.opts.self ? 'none' : `blur(${st.opts.blur}px)`);
+  const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+
+  /* (Re)build for the current geometry and point the element at its filter. `ramp` > 0 animates in. */
+  function apply(el, ramp) {
     const st = bound.get(el);
     if (!st) return;
     const [W, H] = sizeOf(el);
@@ -249,51 +268,74 @@
     const radii = radiiOf(el, W, H);
     const o = st.opts;
     const key = `${W}x${H}|${radii.join(',')}|${o.bevel}|${o.thickness}|${o.blur}|${o.rim}|${o.dispersion}|${o.self ? 'self' : 'back'}`;
-    if (key === st.key) return;
-    const first = !st.key;
-    const rec = acquire(key, W, H, radii, o);
-    if (st.key) release(st.key);
-    st.key = key;
-    el.style.setProperty('--hyalite', `url(#${rec.id})`);
-    if (first && o.materialize > 0 && !reducedMotion()) materialize(rec, o.materialize);
+    st.w = W; st.h = H;
+    let rec;
+    if (key === st.key) rec = filters.get(key);       // same geometry (e.g. back from a settle): just re-point
+    else { rec = acquire(key, W, H, radii, o); if (st.key) release(st.key); st.key = key; }
+    if (!rec) return;
+    if (ramp > 0 && !reducedMotion()) materialize(el, st, rec, ramp);
+    else el.style.setProperty(VAR, `url(#${rec.id})`);
   }
-  const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
 
-  /* Materialize: Apple's glass doesn't fade in, its lensing ramps up. Displacement and rim light
-     go from 0 to target together. Blur is left alone — set the pre-attach fallback to the same
-     blur value, or the element will "pull focus". */
-  function materialize(rec, ms) {
-    const t0 = performance.now();
-    if (rec.rim) rec.rim.n.setAttribute('slope', '0');
+  /* Materialize: Apple's glass doesn't fade in, its lensing ramps up. Displacement and rim light go
+     from 0 to target together on a private clone of the shared filter, then the element switches to
+     the shared one. Blur is left alone — keep the pre-attach fallback at the same blur, or the
+     element will "pull focus". */
+  function materialize(el, st, rec, ms) {
+    const tmp = rec.el.cloneNode(true);
+    tmp.id = `${rec.id}-m${++seq}`;
+    const dms = Array.from(tmp.querySelectorAll('feDisplacementMap')).map((n) => ({ n, s: +n.getAttribute('scale') }));
+    const fa = tmp.querySelector('feFuncA');
+    const rim = fa ? { n: fa, s: +fa.getAttribute('slope') } : null;
+    dms.forEach(({ n }) => n.setAttribute('scale', '0'));
+    if (rim) rim.n.setAttribute('slope', '0');
+    ensureHost().appendChild(tmp);
+    el.style.setProperty(VAR, `url(#${tmp.id})`);
+    const key = st.key, t0 = performance.now();
     const step = (now) => {
+      // rebuilt, detached or resizing meanwhile: whoever did that owns the variable now
+      if (bound.get(el) !== st || st.key !== key || st.settling) { tmp.remove(); return; }
       const t = Math.min(1, (now - t0) / ms), k = 1 - Math.pow(1 - t, 3);
-      rec.dms.forEach(({ n, s }) => n.setAttribute('scale', (s * k).toFixed(2)));
-      if (rec.rim) rec.rim.n.setAttribute('slope', (rec.rim.s * k).toFixed(3));
-      if (t < 1 && rec.el.isConnected) requestAnimationFrame(step);
+      dms.forEach(({ n, s }) => n.setAttribute('scale', (s * k).toFixed(2)));
+      if (rim) rim.n.setAttribute('slope', (rim.s * k).toFixed(3));
+      if (t < 1) requestAnimationFrame(step);
+      else { el.style.setProperty(VAR, `url(#${rec.id})`); tmp.remove(); }
     };
     requestAnimationFrame(step);
   }
 
-  /* Throttled rebuild on resize; the last change always gets a final build */
+  /* Size changes. settle > 0: drop to a plain blur at once, rebuild once the size has been stable
+     for `settle` ms, ramp back in. settle = 0: throttled live rebuilds. */
+  function onResize(el) {
+    const st = bound.get(el);
+    if (!st) return;
+    const [W, H] = sizeOf(el);
+    if (W === st.w && H === st.h) return;            // the observer's initial notification, or no real change
+    if (st.opts.settle > 0) {
+      if (!st.settling) { st.settling = true; setFallback(el, st); }
+      clearTimeout(st.timer);
+      st.timer = setTimeout(() => { st.timer = 0; st.settling = false; apply(el, SETTLE_RAMP_MS); }, st.opts.settle);
+    } else schedule(el);
+  }
   function schedule(el) {
     const st = bound.get(el);
     if (!st) return;
-    const now = performance.now();
     if (st.timer) { st.pending = true; return; }
-    const wait = Math.max(0, REBUILD_MIN_MS - (now - (st.last || 0)));
+    const wait = Math.max(0, LIVE_MIN_MS - (performance.now() - (st.last || 0)));
     st.timer = setTimeout(() => {
       st.timer = 0; st.last = performance.now();
-      apply(el);
+      apply(el, 0);
       if (st.pending) { st.pending = false; schedule(el); }
     }, wait);
   }
 
-  function attach(el, opts, byWatcher) {
+  function attach(el, opts, watcher) {
     if (bound.has(el) || !supported()) return;      // unsupported: write nothing, the CSS fallback wins
-    const st = { key: '', opts: Object.assign({}, DEFAULTS, opts || {}), ro: null, timer: 0, pending: false, last: 0, byWatcher: !!byWatcher };
+    const st = { key: '', opts: sanitize(Object.assign({}, DEFAULTS, opts || {})), ro: null, timer: 0, pending: false,
+                 last: 0, settling: false, w: 0, h: 0, watcher: watcher || null };
     bound.set(el, st);
-    apply(el);
-    st.ro = new ResizeObserver(() => schedule(el));
+    apply(el, st.opts.materialize);
+    st.ro = new ResizeObserver(() => onResize(el));
     st.ro.observe(el);
   }
   function detach(el) {
@@ -302,13 +344,25 @@
     if (st.ro) st.ro.disconnect();
     if (st.timer) clearTimeout(st.timer);
     if (st.key) release(st.key);
-    el.style.removeProperty('--hyalite');
+    el.style.removeProperty(VAR);
     bound.delete(el);
   }
+  /* Force a rebuild (e.g. after a border-radius change that did not change the size) */
+  function refresh(el) {
+    const st = bound.get(el);
+    if (!st) return;
+    const old = st.key;
+    st.key = ''; st.w = st.h = 0;
+    apply(el, 0);
+    if (old) release(old);
+    if (!st.key) setFallback(el, st);
+  }
 
-  /* Watch a container: matching elements present now and added later are attached; removed ones detached */
+  /* Watch a container: matching elements present now, added later, or gaining the class later are
+     attached; removed ones or ones losing the class are detached. Returns { stop }. Several watchers
+     can coexist. */
   function watch(container, selector, opts) {
-    unwatch();
+    const w = { container, selector, opts: sanitize(Object.assign({}, DEFAULTS, opts || {})), mo: null };
     const matches = (node) => {
       const out = [];
       if (node.nodeType !== 1) return out;
@@ -316,33 +370,44 @@
       out.push(...node.querySelectorAll(selector));
       return out;
     };
-    const mo = new MutationObserver((muts) => {
+    const consider = (node) => {
+      if (node.nodeType !== 1) return;
+      if (node.matches(selector)) { if (!bound.has(node)) attach(node, w.opts, w); }
+      else { const st = bound.get(node); if (st && st.watcher === w) detach(node); }
+    };
+    w.mo = new MutationObserver((muts) => {
       for (const m of muts) {
-        m.addedNodes.forEach((n) => matches(n).forEach((el) => attach(el, opts, true)));
-        m.removedNodes.forEach((n) => matches(n).forEach(detach));
+        if (m.type === 'attributes') { consider(m.target); continue; }
+        m.addedNodes.forEach((n) => matches(n).forEach((el) => attach(el, w.opts, w)));
+        m.removedNodes.forEach((n) => matches(n).forEach((el) => { const st = bound.get(el); if (st && st.watcher === w) detach(el); }));
       }
     });
-    mo.observe(container, { childList: true, subtree: true });
-    container.querySelectorAll(selector).forEach((el) => attach(el, opts, true));
-    watcher = { container, selector, opts, mo };
+    w.mo.observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    container.querySelectorAll(selector).forEach((el) => attach(el, w.opts, w));
+    watchers.add(w);
+    return { stop: () => stopWatcher(w) };
   }
-  function unwatch() {       // only detaches what watch() attached; manual attach() survives
-    if (!watcher) return;
-    watcher.mo.disconnect();
-    Array.from(bound.entries()).filter(([, st]) => st.byWatcher).forEach(([el]) => detach(el));
-    watcher = null;
+  function stopWatcher(w) {
+    if (!watchers.has(w)) return;
+    w.mo.disconnect();
+    watchers.delete(w);
+    Array.from(bound.entries()).filter(([, st]) => st.watcher === w).forEach(([el]) => detach(el));
   }
+  function unwatch() { Array.from(watchers).forEach(stopWatcher); }   // stop every watcher; manual attaches survive
 
-  /* Retune every attached element, a few per frame (≤ 8 ms); resolves when all are rebuilt */
+  /* Retune every attached element, a few per frame (≤ 8 ms). A newer call supersedes an older one. */
   function setOpts(opts) {
-    if (watcher) Object.assign(watcher.opts, opts);
+    const s = sanitize(opts || {});
+    watchers.forEach((w) => Object.assign(w.opts, s));
     const els = Array.from(bound.keys());
-    els.forEach((el) => Object.assign(bound.get(el).opts, opts));
+    els.forEach((el) => Object.assign(bound.get(el).opts, s));
+    const gen = ++optsGen;
     return new Promise((resolve) => {
       let i = 0;
       const step = () => {
+        if (gen !== optsGen) return resolve();
         const t0 = performance.now();
-        while (i < els.length && performance.now() - t0 < 8) apply(els[i++]);
+        while (i < els.length && performance.now() - t0 < 8) apply(els[i++], 0);
         if (i < els.length) requestAnimationFrame(step); else resolve();
       };
       step();
@@ -350,8 +415,9 @@
   }
   const info = () => lastInfo;
 
-  /* CSS.supports says yes on Firefox too, but Firefox paints nothing for backdrop-filter:url()
-     and Safari keeps only the blur. So we also require a Chromium engine (Chrome, Edge, Arc, Brave…). */
+  /* CSS.supports says yes on Firefox too, but Firefox paints the element unfiltered for
+     backdrop-filter:url() and Safari keeps only the blur. So we also require a Chromium engine
+     (Chrome, Edge, Arc, Brave, Electron…). */
   let supportedMemo = null;
   const supported = () => {
     if (supportedMemo !== null) return supportedMemo;
@@ -365,7 +431,7 @@
     return supportedMemo;
   };
 
-  const API = { watch, unwatch, attach, detach, setOpts, info, supported, DEFAULTS, version: '0.1.0' };
+  const API = { watch, unwatch, attach, detach, refresh, setOpts, info, supported, DEFAULTS, version: '0.1.0' };
   root.Hyalite = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);

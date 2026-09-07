@@ -6,23 +6,22 @@ Hyalite treats an element as a slab of glass with a rounded bevel. For the eleme
 
 > Named after hyalite, the water-clear glassy opal. It also sounds like *highlight*, which is what the edge is about.
 
+**Live:** [playground](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) · [regression cases](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) — open them in a Chromium browser.
+
 ![The lens on a grid: the field fans into the corners, nothing folds, nothing creases.](demo/shots/playground-grid.jpg)
 
-- **Demo:** [`demo/index.html`](demo/index.html) — playground: plain blur vs hyalite, sliders, drag, a grid background or your own photo.
-- **Demo:** [`demo/island.html`](demo/island.html) — a dependency-free dynamic island that morphs from a record to a card and *materializes* its refraction when it lands.
-
-Chromium only. Firefox and Safari fall back to a plain blur (see [Browser support](#browser-support)).
+- `demo/index.html` — plain blur vs hyalite on the same background: drag, swap, tune bevel / thickness / blur / dispersion / rim, switch to a grid or load your own photo.
+- `demo/cases.html` — self-checking page: asymmetric and elliptical radii, twins sharing a filter, a streaming bubble, clamps.
 
 ## Use
 
 ```html
-<link rel="stylesheet" href="your.css">
 <script src="hyalite.js"></script>
 ```
 
 ```css
 .glass {
-  /* the engine writes --hyalite on each attached element; every other browser keeps the fallback */
+  /* Hyalite writes --hyalite on each attached element; every other browser keeps the fallback */
   backdrop-filter: var(--hyalite, blur(6px));
   -webkit-backdrop-filter: var(--hyalite, blur(6px));
   /* colour the glass *above* the refraction, never inside it */
@@ -32,11 +31,13 @@ Chromium only. Firefox and Safari fall back to a plain blur (see [Browser suppor
 ```
 
 ```js
-// every .glass inside #app, now and later (MutationObserver); resized ones are rebuilt (ResizeObserver)
-Hyalite.watch(document.getElementById('app'), '.glass', { bevel: 16, thickness: 10, blur: 3 });
+// every .glass inside #app, now and later; resized ones are rebuilt; several watchers can coexist
+const chat = Hyalite.watch(document.getElementById('app'), '.glass', { bevel: 16, thickness: 10, blur: 3 });
+chat.stop();
 
 // or one element at a time
 Hyalite.attach(card, { bevel: 24, thickness: 10, blur: 0.5, materialize: 220 });
+Hyalite.refresh(card);   // after a border-radius change that did not change the size
 Hyalite.detach(card);
 ```
 
@@ -44,62 +45,77 @@ Hyalite.detach(card);
 
 | call | what it does |
 |---|---|
-| `Hyalite.watch(container, selector, opts)` | attach every match now and as it appears; detach on removal |
-| `Hyalite.unwatch()` | stop watching and detach what `watch` attached (manual attaches survive) |
+| `Hyalite.watch(container, selector, opts)` → `{ stop }` | attach every match now, when it is added, or when it gains the class; detach on removal. Several watchers can coexist |
+| `Hyalite.unwatch()` | stop every watcher (manual attaches survive) |
 | `Hyalite.attach(el, opts)` / `Hyalite.detach(el)` | manual control of one element |
-| `Hyalite.setOpts(opts)` | retune every attached element, a few per frame; returns a Promise |
+| `Hyalite.refresh(el)` | force a rebuild for the current geometry |
+| `Hyalite.setOpts(opts)` | retune every attached element, a few per frame; returns a Promise. A newer call supersedes an older one |
 | `Hyalite.info()` | `{ maxDisplacement, bevel, mapSize }` of the last build |
 | `Hyalite.supported()` | `true` only where SVG backdrop filters actually render (Chromium) |
 | `Hyalite.DEFAULTS` | the option defaults |
 
 ### Options
 
+All numeric options are clamped to sane ranges.
+
 | option | default | meaning |
 |---|---|---|
-| `bevel` | 16 | width of the bent zone along the edge, px. Clamped to the corner radius (rule 2) |
+| `bevel` | 16 | width of the bent zone along the edge, px. Clamped to the largest corner radius (see [Corners](#corners)) |
 | `thickness` | 10 | glass thickness, px. Drives how far the edge pulls the backdrop inward |
 | `blur` | 3 | frost in the centre, px |
-| `dispersion` | 0.05 | chromatic aberration, 0–0.16. `0` is a single displacement pass and half the GPU cost |
-| `rim` | 0.45 | geometry-aware edge light, 0–1.6. `0` turns it off |
-| `materialize` | 0 | ms. On the first build, ramp displacement and rim light from zero. Apple’s glass does not fade in; its lensing ramps up |
-| `self` | false | the element filters *itself* (`filter: var(--hyalite)`) instead of its backdrop. Displacement only — see notes |
+| `dispersion` | 0.05 | chromatic aberration, 0–0.5. `0` is a single displacement pass and noticeably cheaper |
+| `rim` | 0.45 | geometry-aware edge light, 0–4. `0` turns it off |
+| `materialize` | 0 | ms. On attach, ramp displacement and rim light from zero. Apple’s glass does not fade in; its lensing ramps up |
+| `settle` | 120 | ms. While an element keeps resizing it shows a plain blur of the same radius; `settle` ms after the last change the map is rebuilt once and the refraction ramps back in. `0` = live mode: throttled rebuilds with the old map stretched meanwhile |
+| `self` | false | the element filters *itself* (`filter: var(--hyalite)`) instead of its backdrop. Displacement only — see [Gotchas](#gotchas) |
 | `onBuild(info)` | — | called after every map build |
 
-Filters are cached by size + corner radii + options, so elements with the same geometry share one map. Large elements get a downsampled map (the field is smooth; `feImage` stretches it back without visible loss). Sizes are read from the layout box, so transforms don’t break the map. Percentage radii work.
+Filters are cached by size + corner radii + options, so elements with the same geometry share one map; the materialize ramp runs on a private clone, so animating one element never touches another. Large elements get a downsampled map (the field is smooth; `feImage` stretches it back without visible loss). Sizes are read from the layout box, so transforms don’t break the map.
+
+### Corners
+
+Per-corner *circular* radii are exact: each corner uses its own radius in the distance field. The bevel is clamped to the **largest** corner, on purpose — a chat bubble with a 6px tail would otherwise lose its refraction along every edge. Near a corner smaller than the bevel the depth field kinks on the medial axis, but the direction field is taken from a larger rectangle, so the kink is faint. Elliptical radii (`40px / 16px`) are approximated by their horizontal value; percentage radii resolve against the shorter side. This is not a full reimplementation of CSS radius normalisation.
 
 ## How it works
 
 1. **Distance field.** A signed distance function of the rounded rectangle (per-corner radii) gives, for every pixel, how deep inside the edge it sits.
 2. **Snell’s law.** The glass is a slab of `thickness` with a quarter-circle bevel of width `bevel`. A view ray refracts toward the surface normal at the bevel (n = 1.5) and travels through the remaining glass to the backdrop. The lateral offset is the displacement; it is largest at the rim and decays to zero at the inner edge of the bevel.
-3. **No folding.** The decay slope is capped at 0.85 px/px. At 1 the sampling point stands still (infinite stretch); above 1 the image mirrors and you get doubled lines along the rim.
+3. **No folding.** The decay slope is capped at 0.85 px/px. At 1 the sampling point stands still (infinite stretch); above 1 the image mirrors and you get doubled lines along the rim. This is a constraint on the mapping, not a taste parameter.
 4. **Direction.** Offsets point *inward* along the normal of a slightly larger rounded rect (radius + bevel), so the turn from “pull down” to “pull right” is spread along a longer arc. Taking the direction from the true radius makes every corner look like a ridge.
 5. **Encoding.** Red = x offset, green = y offset, 128 = no move, blue = rim light (how much the bevel faces the light). The map is a PNG data URL.
 6. **The filter.** `feImage` (the map) → `feGaussianBlur` (frost) → `feDisplacementMap` (one pass, or one per colour channel when `dispersion > 0`, summed with `feComposite arithmetic`) → the rim light composited over. `filterUnits="userSpaceOnUse"` with the element’s exact size, `color-interpolation-filters="sRGB"` so that 128 really means zero.
 7. **`backdrop-filter: url(#id)`** does the rest, live, for whatever is behind the element.
 
-Three rules that each leave a visible artifact when broken: displacement must not fold; bevel must not exceed the corner radius (past that the field reaches the distance field’s medial axis and every corner grows a diagonal crease); direction must come from the larger rect.
-
 ## Browser support
 
-| | `backdrop-filter: url()` | what you get |
-|---|---|---|
-| Chrome, Edge, Arc, Brave, Electron (Chromium) | renders | refraction |
-| Safari / WebKit | accepts the property, drops the SVG part ([bug 245510](https://bugs.webkit.org/show_bug.cgi?id=245510)) | the CSS fallback blur |
-| Firefox | reports support, paints **nothing** ([bug 1787623](https://bugzilla.mozilla.org/show_bug.cgi?id=1787623)) | the CSS fallback blur — Hyalite never writes `--hyalite` there |
+Tested September 2026.
 
-`CSS.supports('backdrop-filter', 'url(#x)')` is true on all three, which is why `Hyalite.supported()` also checks for a Chromium engine. There is an open [W3C issue](https://github.com/w3c/svgwg/issues/1142) about making backdrop displacement interoperable.
+| engine | `backdrop-filter: url(#svg)` | what you get |
+|---|---|---|
+| Chromium — Chrome, Edge, Arc, Brave, Electron | renders | refraction |
+| WebKit — Safari | accepts the property, drops the SVG part ([bug 245510](https://bugs.webkit.org/show_bug.cgi?id=245510), an implementation is in review as of Sep 2026) | your CSS fallback |
+| Gecko — Firefox | does not implement SVG filter graphs in `backdrop-filter`; since Firefox 106 the element renders unfiltered instead of disappearing ([bug 1787623](https://bugzilla.mozilla.org/show_bug.cgi?id=1787623)) | your CSS fallback |
+
+`CSS.supports('backdrop-filter', 'url(#x)')` is true on all three, which is why `Hyalite.supported()` also checks for a Chromium engine and writes nothing elsewhere. There is an open [W3C issue](https://github.com/w3c/svgwg/issues/1142) about making backdrop displacement interoperable; when WebKit ships, the engine check is the one line to revisit.
+
+## Performance
+
+- Every element with a backdrop filter is its own render surface. A modest number of glass surfaces on screen is fine; hundreds are not. `dispersion: 0` drops two displacement passes and two composites per surface.
+- Maps are built on the main thread (a per-pixel loop plus a PNG encode). With the default `settle`, a continuously resizing element costs one build after it stops, not one per frame. Maps are capped at ≈ 320k pixels.
+- No numbers are claimed here on purpose; measure on your own targets.
 
 ## Gotchas
 
 - The hidden `<svg>` that holds the filters must not be `display:none` (Blink ignores those filters). Hyalite uses a 0×0 box.
 - `--hyalite` is an inherited custom property. Consume it only on the attached element; a child that also reads it would apply a filter built for its parent.
 - The 3-pass dispersion sum is only valid for opaque sources. On a translucent layer alpha is summed three times and clamped, which darkens the colour — that is what `self: true` avoids (displacement only).
-- Every element with a backdrop filter is its own render surface. Dozens on screen are fine; hundreds are not. Keep `dispersion` at 0 on busy pages.
+- For a shape morph (a pill growing into a card): set `--hyalite: blur(<your blur>px)` yourself while the shape moves, then `attach` with `materialize` once it lands. The map is built for a size; do not attach to an element that is still changing shape.
 - The map is a `data:` URL: a strict CSP needs `img-src data:`.
-- If an element is animated in size (a growing bubble), builds are throttled to one per 90 ms and the final size always gets a build. For a shape morph, do what the island demo does: show a plain blur while the shape moves, attach with `materialize` once it lands.
 
-## Credits
+## Credits and prior art
 
-Apple’s Liquid Glass (WWDC25) for the idea that glass should *bend* light rather than scatter it. The SVG-displacement approach has been explored by many; [kube.io](https://kube.io/blog/liquid-glass-css-svg/) has the clearest physics write-up. Hyalite’s contributions are the no-fold constraint, the larger-radius direction field, per-corner radii, the materialize ramp, and a small watch/attach API that survives real pages.
+Apple’s Liquid Glass (WWDC25) for the idea that glass should *bend* light rather than scatter it. Rounded-rect SDF → refraction → displacement map → `feDisplacementMap` is a route several projects have taken; [kube.io](https://kube.io/blog/liquid-glass-css-svg/) has the clearest physics write-up. Hyalite’s implementation-specific choices are the no-fold constraint, the larger-radius direction field, per-corner radii, maps built for the real element size, the settle/materialize behaviour, the private ramp clone, and a small watch/attach API that survives real pages.
+
+Engineering by Claude Fable 5.1 (Anthropic), pair-programmed with VII-Cae, who set the direction, tested every build by eye and tuned every parameter.
 
 MIT © 2026 VII-Cae

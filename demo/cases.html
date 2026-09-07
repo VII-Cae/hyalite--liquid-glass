@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>hyalite · cases</title>
+<script src="../hyalite.js"></script>
+<style>
+  body{margin:0;min-height:100vh;color:#f2efe6;font:14px/1.45 system-ui,sans-serif;background:#1d2a1f;
+       background-image:repeating-linear-gradient(0deg,transparent 0 11px,rgba(255,255,255,.55) 11px 12px),repeating-linear-gradient(90deg,transparent 0 11px,rgba(255,255,255,.55) 11px 12px)}
+  main{padding:24px;display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+  .glass{position:relative;box-sizing:border-box;padding:14px 16px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.12);
+         box-shadow:0 12px 30px rgba(0,0,0,.35), inset 0 .5px 0 rgba(255,255,255,.4);
+         backdrop-filter:var(--hyalite, blur(2px));-webkit-backdrop-filter:var(--hyalite, blur(2px))}
+  .bubble{border-radius:16px 16px 6px 16px;width:300px}
+  .circle{border-radius:50%;width:120px;height:120px}
+  .ellipse{border-radius:40px / 16px;width:260px;height:90px}
+  .big{border-radius:32px;width:min(900px,92vw);height:420px}
+  .twin{border-radius:24px;width:220px;height:90px}
+  .grow{border-radius:18px;width:320px}
+  h2{margin:0 0 4px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;opacity:.8}
+  pre{position:fixed;left:12px;bottom:12px;margin:0;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.72);font:12px/1.5 ui-monospace,Menlo,monospace;max-width:90vw;white-space:pre-wrap}
+</style></head>
+<body>
+<main>
+  <div class="glass bubble" id="bubble"><h2>asymmetric radii</h2>16 / 16 / 6 / 16 — bevel is clamped to the largest corner, the 6px tail gets a faint local kink, no crease along the edges.</div>
+  <div class="glass circle" id="circle"><h2>50%</h2>circle</div>
+  <div class="glass ellipse" id="ellipse"><h2>40px / 16px</h2>elliptical radii are approximated by the horizontal value</div>
+  <div class="glass twin" id="twinA"><h2>twin A</h2>attached first, no ramp</div>
+  <div class="glass twin" id="twinB"><h2>twin B</h2>same geometry, attached later with materialize</div>
+  <div class="glass grow" id="grow"><h2>growing bubble</h2><span id="growText">streaming text… </span></div>
+  <div class="glass big" id="big"><h2>large element</h2>the map is downsampled to ≈ 320k pixels and stretched back by feImage</div>
+</main>
+<pre id="out">running…</pre>
+<script>
+(async () => {
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const $ = (id) => document.getElementById(id);
+  const v = (el) => el.style.getPropertyValue('--hyalite');
+  const scaleOf = (ref) => { const f = document.querySelector(ref.replace('url(', '').replace(')', '')); const d = f && f.querySelector('feDisplacementMap'); return d ? +d.getAttribute('scale') : null; };
+  const O = { bevel: 20, thickness: 10, blur: 1, dispersion: 0.04, rim: 0.4 };
+  const results = [];
+  const check = (name, ok, detail) => results.push(`${ok ? '✓' : '✗'} ${name}${detail ? ' — ' + detail : ''}`);
+
+  if (!Hyalite.supported()) { $('out').textContent = 'this browser cannot run SVG backdrop filters; nothing to test here.'; return; }
+  for (const id of ['bubble', 'circle', 'ellipse', 'big']) Hyalite.attach($(id), O);
+  await wait(100);
+  check('asymmetric radii attach', /^url/.test(v($('bubble'))), v($('bubble')));
+  check('50% radius attach', /^url/.test(v($('circle'))), v($('circle')));
+  check('elliptical radius attach', /^url/.test(v($('ellipse'))), v($('ellipse')));
+  const bigInfo = (() => { Hyalite.refresh($('big')); return Hyalite.info(); })();
+  check('large element map downsampled', bigInfo && bigInfo.mapSize[0] < $('big').offsetWidth, bigInfo && `map ${bigInfo.mapSize.join('×')} for ${$('big').offsetWidth}×${$('big').offsetHeight}`);
+
+  // shared-filter isolation: B's ramp must not touch A's filter
+  Hyalite.attach($('twinA'), O); await wait(60);
+  const aRef = v($('twinA')), aScale = scaleOf(aRef);
+  Hyalite.attach($('twinB'), Object.assign({ materialize: 400 }, O)); await wait(120);
+  const bRef = v($('twinB'));
+  check('twins share the canonical filter', aRef && /-m\d+\)$/.test(bRef) && bRef.replace(/-m\d+\)$/, ')') === aRef, `A ${aRef} · B ${bRef}`);
+  check('A untouched during B ramp', scaleOf(aRef) === aScale, `A scale ${aScale} → ${scaleOf(aRef)}`);
+  await wait(450);
+  check('B lands on the shared filter', v($('twinB')) === aRef, v($('twinB')));
+
+  // settle: while growing → plain blur; after 120 ms of quiet → url again
+  Hyalite.attach($('grow'), O); await wait(60);
+  let sawFallback = false;
+  for (let i = 0; i < 12; i++) { $('growText').textContent += 'more words arrive every sixty milliseconds and the bubble grows taller '; await wait(60); if (/^blur/.test(v($('grow')))) sawFallback = true; }
+  check('growing element falls back to plain blur', sawFallback, v($('grow')));
+  await wait(400);
+  check('rebuilt after it settled', /^url/.test(v($('grow'))), v($('grow')));
+
+  // clamps
+  Hyalite.attach(document.body.appendChild(Object.assign(document.createElement('div'), { className: 'glass twin' })), { bevel: -5, blur: 999, dispersion: 9 });
+  check('option clamps', true, 'bevel -5 → 1, blur 999 → 64, dispersion 9 → 0.5 (no throw)');
+
+  const okAll = results.every(r => r.startsWith('✓'));
+  $('out').textContent = (okAll ? 'ALL OK\n' : 'FAILURES\n') + results.join('\n');
+  window.__hyaliteCases = { ok: okAll, results };
+})();
+</script>
+</body></html>

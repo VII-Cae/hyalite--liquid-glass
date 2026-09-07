@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>hyalite · playground</title>
+<script src="../hyalite.js"></script>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden}
+  body{
+    position:relative;width:100vw;height:100vh;color:#f2efe6;
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background-color:#0f1a2b;
+    background-image:
+      radial-gradient(260px 260px at 14% 32%, #ff4d6d 0 30%, transparent 31%),
+      radial-gradient(300px 300px at 86% 72%, #ffd166 0 32%, transparent 33%),
+      radial-gradient(220px 220px at 56% 16%, #06d6a0 0 30%, transparent 31%),
+      repeating-linear-gradient(45deg, #101a2b 0 14px, #2b3d5c 14px 28px);
+    background-size:cover;background-position:center;
+  }
+  body.grid{background-image:
+      repeating-linear-gradient(0deg, transparent 0 11px, rgba(255,255,255,.55) 11px 12px),
+      repeating-linear-gradient(90deg, transparent 0 11px, rgba(255,255,255,.55) 11px 12px);background-color:#1d2a1f}
+  body.photo{background-image:var(--photo)}
+  .big{position:absolute;left:0;right:0;top:38%;text-align:center;font-size:min(150px,14vw);font-weight:800;letter-spacing:-.04em;
+       color:rgba(255,255,255,.85);white-space:nowrap;pointer-events:none}
+  body.grid .big{color:rgba(255,255,255,.35)}
+
+  /* ── the glass ─────────────────────────────────────────── */
+  .slot{position:absolute;width:380px;touch-action:none;cursor:grab;user-select:none}
+  .slot.dragging{cursor:grabbing}
+  .slot .label{position:absolute;left:0;right:0;top:100%;margin-top:10px;text-align:center;font:12px/1.4 ui-monospace,Menlo,monospace;
+               color:rgba(255,255,255,.78);text-shadow:0 1px 4px rgba(0,0,0,.8)}
+  .glass{
+    position:relative;box-sizing:border-box;border-radius:30px;padding:22px 24px 20px;
+    /* neutral darkening only: never brighten or saturate what is behind (that is frosted glass, not clear glass) */
+    background:rgba(0,0,0,.13);
+    border:1px solid rgba(255,255,255,.10);
+    box-shadow:0 16px 42px rgba(0,0,0,.36), inset 0 .5px 0 rgba(255,255,255,.42), inset 0 -.5px 0 rgba(255,255,255,.14),
+               inset 3px 0 9px -6px rgba(255,255,255,.42), inset -3px 0 9px -6px rgba(255,255,255,.42);
+    /* the engine writes --hyalite; everything else falls back to a plain blur */
+    backdrop-filter:var(--hyalite, blur(3px));-webkit-backdrop-filter:var(--hyalite, blur(3px));
+  }
+  .glass.plain{backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+  .glass h3{margin:0 0 4px;font-size:18px;font-weight:600}
+  .glass p{margin:0 0 14px;font-size:12.5px;opacity:.78}
+  .row{display:flex;gap:8px}
+  .chip{flex:1;padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.14);font-size:12px;text-align:center;border:1px solid rgba(255,255,255,.10)}
+  .chip.on{background:rgba(255,255,255,.86);color:#1b1f1a}
+
+  /* ── HUD ───────────────────────────────────────────────── */
+  .hud{position:absolute;z-index:20;left:18px;top:16px;display:flex;flex-direction:column;gap:7px;padding:12px 14px;border-radius:12px;
+       background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.12);font:12px/1.3 ui-monospace,Menlo,monospace;color:rgba(255,255,255,.85)}
+  .hud h1{margin:0 0 2px;font:600 13px/1.2 system-ui,sans-serif}
+  .hud label{display:grid;grid-template-columns:82px 130px 52px;align-items:center;gap:8px}
+  .hud input[type=range]{width:130px;accent-color:#dfc174}
+  .hud .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+  .hud button,.hud .file{font:inherit;padding:5px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.10);color:inherit;cursor:pointer}
+  .hud button:hover,.hud .file:hover{background:rgba(255,255,255,.18)}
+  .hud .hint{opacity:.6}
+  .hud .warn{color:#ffb4a2}
+  .hud input[type=file]{display:none}
+</style></head>
+<body>
+<div class="big">HYALITE</div>
+
+<div class="slot" id="slotA" style="left:8%;top:44%">
+  <div class="glass plain">
+    <h3>Plain blur</h3><p>backdrop-filter: blur(3px). What most "glassmorphism" is.</p>
+    <div class="row"><span class="chip on">Wi-Fi</span><span class="chip">Bluetooth</span><span class="chip">Focus</span></div>
+  </div>
+  <div class="label">A · plain blur</div>
+</div>
+<div class="slot" id="slotB" style="left:56%;top:44%">
+  <div class="glass lens" id="lens">
+    <h3>Hyalite</h3><p>Same card, plus a lens map: the edge bends what is behind it.</p>
+    <div class="row"><span class="chip on">Wi-Fi</span><span class="chip">Bluetooth</span><span class="chip">Focus</span></div>
+  </div>
+  <div class="label">B · hyalite (one SVG filter)</div>
+</div>
+
+<div class="hud">
+  <h1>hyalite · playground</h1>
+  <label>bevel <input id="bevel" type="range" min="4" max="48" value="25" step="1"><b id="bevelV"></b></label>
+  <label>thickness <input id="thickness" type="range" min="2" max="40" value="10" step="1"><b id="thicknessV"></b></label>
+  <label>blur <input id="blur" type="range" min="0" max="12" value="0.5" step="0.5"><b id="blurV"></b></label>
+  <label>dispersion <input id="dispersion" type="range" min="0" max="0.16" value="0.09" step="0.01"><b id="dispersionV"></b></label>
+  <label>rim light <input id="rim" type="range" min="0" max="1.6" value="0.3" step="0.05"><b id="rimV"></b></label>
+  <div class="hint" id="readout"></div>
+  <div class="btns">
+    <button id="swap">swap</button><button id="mat">materialize</button><button id="grid">grid</button>
+    <label class="file">load image<input id="file" type="file" accept="image/*"></label>
+    <button id="reset">reset</button>
+  </div>
+  <div class="hint">drag the cards · sliders act on B only</div>
+  <div class="hint" id="sup"></div>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const lens = $('#lens');
+  const q = new URLSearchParams(location.search);
+  const P = { bevel: 25, thickness: 10, blur: 0.5, dispersion: 0.09, rim: 0.3 };
+  const FMT = { bevel: v => v + 'px', thickness: v => v + 'px', blur: v => v + 'px', dispersion: v => v.toFixed(2), rim: v => v.toFixed(2) };
+  const readout = (info) => { if (info) $('#readout').textContent = `max edge offset ≈ ${info.maxDisplacement.toFixed(1)}px · bevel ${info.bevel}px · map ${info.mapSize.join('×')}`; };
+
+  if (q.get('bg') === 'grid') document.body.classList.add('grid');
+  for (const k in P) {
+    const el = $('#' + k);
+    if (q.has(k)) el.value = q.get(k);
+    P[k] = +el.value; $('#' + k + 'V').textContent = FMT[k](P[k]);
+    el.addEventListener('input', () => { P[k] = +el.value; $('#' + k + 'V').textContent = FMT[k](P[k]); Hyalite.setOpts({ [k]: P[k] }).then(() => readout(Hyalite.info())); });
+  }
+  $('#sup').textContent = Hyalite.supported() ? `refraction on · ${(navigator.userAgent.match(/(Chrome|Edg|Safari|Firefox)\/[\d.]+/) || ['?'])[0]}` : 'this browser cannot run SVG backdrop filters — B is showing the plain-blur fallback';
+  if (!Hyalite.supported()) $('#sup').classList.add('warn');
+
+  Hyalite.attach(lens, Object.assign({ onBuild: readout }, P));
+
+  // drag
+  for (const slot of document.querySelectorAll('.slot')) {
+    let sx = 0, sy = 0, ox = 0, oy = 0;
+    slot.addEventListener('pointerdown', (ev) => { if (ev.button !== 0) return; slot.setPointerCapture(ev.pointerId); slot.classList.add('dragging'); sx = ev.clientX; sy = ev.clientY; ox = slot.offsetLeft; oy = slot.offsetTop; });
+    slot.addEventListener('pointermove', (ev) => { if (!slot.classList.contains('dragging')) return; slot.style.left = (ox + ev.clientX - sx) + 'px'; slot.style.top = (oy + ev.clientY - sy) + 'px'; });
+    const end = () => slot.classList.remove('dragging');
+    slot.addEventListener('pointerup', end); slot.addEventListener('pointercancel', end);
+  }
+  $('#swap').addEventListener('click', () => {
+    const a = $('#slotA'), b = $('#slotB'), ra = [a.offsetLeft, a.offsetTop], rb = [b.offsetLeft, b.offsetTop];
+    a.style.left = rb[0] + 'px'; a.style.top = rb[1] + 'px'; b.style.left = ra[0] + 'px'; b.style.top = ra[1] + 'px';
+  });
+  // materialize: detach, then re-attach with a ramp
+  $('#mat').addEventListener('click', () => { Hyalite.detach(lens); Hyalite.attach(lens, Object.assign({ onBuild: readout, materialize: 520 }, P)); });
+  $('#grid').addEventListener('click', () => { document.body.classList.toggle('grid'); document.body.classList.remove('photo'); });
+  $('#file').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    document.body.style.setProperty('--photo', `url(${URL.createObjectURL(f)})`);
+    document.body.classList.remove('grid'); document.body.classList.add('photo');
+  });
+  $('#reset').addEventListener('click', () => location.href = location.pathname);
+})();
+</script>
+</body></html>

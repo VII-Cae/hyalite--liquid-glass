@@ -1,0 +1,11 @@
+{
+  "name": "hyalite",
+  "version": "0.1.0",
+  "description": "Real refraction liquid glass for the web: per-element SDF lens maps + SVG displacement + backdrop-filter. One file, no WebGL, no build step.",
+  "main": "hyalite.js",
+  "files": ["hyalite.js", "README.md", "README.zh-CN.md", "LICENSE"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/VII-Cae/hyalite--liquid-glass.git" },
+  "homepage": "https://github.com/VII-Cae/hyalite--liquid-glass#readme",
+  "keywords": ["liquid-glass", "glassmorphism", "refraction", "backdrop-filter", "svg-filter", "feDisplacementMap", "apple", "dynamic-island", "ui"]
+}

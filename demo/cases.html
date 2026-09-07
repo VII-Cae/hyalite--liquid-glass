@@ -5,26 +5,38 @@
 <style>
   body{margin:0;min-height:100vh;color:#f2efe6;font:14px/1.45 system-ui,sans-serif;background:#1d2a1f;
        background-image:repeating-linear-gradient(0deg,transparent 0 11px,rgba(255,255,255,.55) 11px 12px),repeating-linear-gradient(90deg,transparent 0 11px,rgba(255,255,255,.55) 11px 12px)}
-  main{padding:24px;display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+  main{padding:24px 24px 46vh;display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
   .glass{position:relative;box-sizing:border-box;padding:14px 16px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.12);
          box-shadow:0 12px 30px rgba(0,0,0,.35), inset 0 .5px 0 rgba(255,255,255,.4);
          backdrop-filter:var(--hyalite, blur(2px));-webkit-backdrop-filter:var(--hyalite, blur(2px))}
   .bubble{border-radius:16px 16px 6px 16px;width:300px}
   .circle{border-radius:50%;width:120px;height:120px}
   .ellipse{border-radius:40px / 16px;width:260px;height:90px}
-  .big{border-radius:32px;width:min(900px,92vw);height:420px}
+  /* deliberately fixed, not min(900px,92vw): 900×420 = 378k px is over MAX_MAP_PX whatever the
+     window is, so the downsampling case never silently tests nothing on a narrow viewport */
+  .big{border-radius:32px;width:900px;height:420px}
   .twin{border-radius:24px;width:220px;height:90px}
   .grow{border-radius:18px;width:320px}
+  /* 320×40 with 24px top corners. CSS keeps them at 24 (they share edges with 0s and fit);
+     clamping each corner to half the short side would wrongly say 20. */
+  .norm{border-radius:24px 24px 0 0;width:320px;height:40px;padding:0 14px;display:flex;align-items:center;gap:10px;overflow:hidden;font-size:11px}
+  .norm h2{margin:0}
+  /* 300 and 304 land in the same size bucket, so they must end up on the same map */
+  .bkt{border-radius:20px;height:120px}
   h2{margin:0 0 4px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;opacity:.8}
-  pre{position:fixed;left:12px;bottom:12px;margin:0;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.72);font:12px/1.5 ui-monospace,Menlo,monospace;max-width:90vw;white-space:pre-wrap}
+  pre{position:fixed;left:12px;bottom:12px;margin:0;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.78);
+      font:12px/1.5 ui-monospace,Menlo,monospace;max-width:90vw;max-height:42vh;overflow:auto;white-space:pre-wrap}
 </style></head>
 <body>
 <main>
   <div class="glass bubble" id="bubble"><h2>asymmetric radii</h2>16 / 16 / 6 / 16 — bevel is clamped to the largest corner, the 6px tail gets a faint local kink, no crease along the edges.</div>
-  <div class="glass circle" id="circle"><h2>50%</h2>circle</div>
+  <div class="glass circle" id="circle"><h2>50%</h2>circle · mirrored</div>
   <div class="glass ellipse" id="ellipse"><h2>40px / 16px</h2>elliptical radii are approximated by the horizontal value</div>
+  <div class="glass norm" id="norm"><h2>radius rule</h2>320×40, radius 24 24 0 0</div>
   <div class="glass twin" id="twinA"><h2>twin A</h2>attached first, no ramp</div>
   <div class="glass twin" id="twinB"><h2>twin B</h2>same geometry, attached later with materialize</div>
+  <div class="glass bkt" id="bktA" style="width:300px"><h2>bucket A</h2>300 × 120</div>
+  <div class="glass bkt" id="bktB" style="width:304px"><h2>bucket B</h2>304 × 120 — same map</div>
   <div class="glass grow" id="grow"><h2>growing bubble</h2><span id="growText">streaming text… </span></div>
   <div class="glass big" id="big"><h2>large element</h2>the map is downsampled to ≈ 320k pixels and stretched back by feImage</div>
 </main>
@@ -34,19 +46,31 @@
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
   const $ = (id) => document.getElementById(id);
   const v = (el) => el.style.getPropertyValue('--hyalite');
-  const scaleOf = (ref) => { const f = document.querySelector(ref.replace('url(', '').replace(')', '')); const d = f && f.querySelector('feDisplacementMap'); return d ? +d.getAttribute('scale') : null; };
+  const filterOf = (ref) => document.querySelector(String(ref).replace('url(', '').replace(')', ''));
+  const scaleOf = (ref) => { const f = filterOf(ref), d = f && f.querySelector('feDisplacementMap'); return d ? +d.getAttribute('scale') : null; };
   const O = { bevel: 20, thickness: 10, blur: 1, dispersion: 0.04, rim: 0.4 };
   const results = [];
   const check = (name, ok, detail) => results.push(`${ok ? '✓' : '✗'} ${name}${detail ? ' — ' + detail : ''}`);
+  // info() reports the last *map* build, and most rebuilds now reuse a cached map on purpose,
+  // so every case that wants an element's own numbers catches them through onBuild.
+  const seen = {};
+  const catching = (id, extra) => Object.assign({ onBuild: (i) => { seen[id] = i; } }, O, extra || {});
 
   if (!Hyalite.supported()) { $('out').textContent = 'this browser cannot run SVG backdrop filters; nothing to test here.'; return; }
-  for (const id of ['bubble', 'circle', 'ellipse', 'big']) Hyalite.attach($(id), O);
+
+  for (const id of ['bubble', 'circle', 'ellipse', 'norm', 'big']) Hyalite.attach($(id), catching(id));
   await wait(100);
   check('asymmetric radii attach', /^url/.test(v($('bubble'))), v($('bubble')));
   check('50% radius attach', /^url/.test(v($('circle'))), v($('circle')));
   check('elliptical radius attach', /^url/.test(v($('ellipse'))), v($('ellipse')));
-  const bigInfo = (() => { Hyalite.refresh($('big')); return Hyalite.info(); })();
-  check('large element map downsampled', bigInfo && bigInfo.mapSize[0] < $('big').offsetWidth, bigInfo && `map ${bigInfo.mapSize.join('×')} for ${$('big').offsetWidth}×${$('big').offsetHeight}`);
+  const bigPx = $('big').offsetWidth * $('big').offsetHeight, kpx = (n) => (n / 1000).toFixed(0) + 'k';
+  check('large element map downsampled', seen.big && bigPx > 320000 && seen.big.mapSize[0] * seen.big.mapSize[1] < bigPx,
+        seen.big && `map ${seen.big.mapSize.join('×')} = ${kpx(seen.big.mapSize[0] * seen.big.mapSize[1])} px for ` +
+                    `${$('big').offsetWidth}×${$('big').offsetHeight} = ${kpx(bigPx)} px (cap ≈ 320k)`);
+
+  // CSS corner-overlap rule: 24px corners on a 40px-tall card survive, they are not clamped to 20
+  check('CSS radius rule keeps 24px on a 40px-tall card', seen.norm && Math.abs(seen.norm.radii[0] - 24) < 0.01,
+        seen.norm && `top corners ${seen.norm.radii[0].toFixed(2)}px · per-corner clamping would say ${($('norm').offsetHeight / 2).toFixed(0)}px`);
 
   // shared-filter isolation: B's ramp must not touch A's filter
   Hyalite.attach($('twinA'), O); await wait(60);
@@ -58,6 +82,35 @@
   await wait(450);
   check('B lands on the shared filter', v($('twinB')) === aRef, v($('twinB')));
 
+  // two-level cache: sizes within one bucket share a map, and blur never invalidates one
+  let builds = 0;
+  const counting = Object.assign({ onBuild: () => builds++ }, O);
+  Hyalite.attach($('bktA'), counting); await wait(60);
+  const afterA = builds;
+  Hyalite.attach($('bktB'), counting); await wait(60);
+  check('300px and 304px share one map', builds === afterA, `map builds ${afterA} → ${builds} (bucket ≤ 2 %)`);
+  const beforeTune = builds;
+  await Hyalite.setOpts({ blur: 3 });
+  await Hyalite.setOpts({ blur: O.blur });
+  check('setOpts(blur) rebuilds no map', builds === beforeTune, `map builds ${beforeTune} → ${builds}`);
+
+  // quarter-symmetry: with four equal corners three quadrants are mirrored, not computed.
+  // Mirroring x negates the x offset (R + R′ = 256, ±1 for rounding) and leaves y alone (G = G′).
+  let worstR = 0, worstG = 0;
+  try {
+    const im = new Image(); im.src = seen.circle.map; await im.decode();
+    const cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height;
+    const c2 = cv.getContext('2d', { willReadFrequently: true });
+    c2.drawImage(im, 0, 0);
+    const P = c2.getImageData(0, 0, im.width, im.height).data;
+    for (let y = 0; y < im.height; y++) for (let x = 0; x < im.width; x++) {
+      const a = (y * im.width + x) * 4, b = (y * im.width + (im.width - 1 - x)) * 4;
+      worstR = Math.max(worstR, Math.abs(P[a] + P[b] - 256));
+      worstG = Math.max(worstG, Math.abs(P[a + 1] - P[b + 1]));
+    }
+    check('quarter-symmetry mirrors exactly', worstR <= 1 && worstG <= 1, `worst |R+R′−256| ${worstR} · |G−G′| ${worstG}`);
+  } catch (e) { check('quarter-symmetry mirrors exactly', false, 'could not read the map back: ' + e.message); }
+
   // settle: while growing → plain blur; after 120 ms of quiet → url again
   Hyalite.attach($('grow'), O); await wait(60);
   let sawFallback = false;
@@ -66,9 +119,22 @@
   await wait(400);
   check('rebuilt after it settled', /^url/.test(v($('grow'))), v($('grow')));
 
-  // clamps
-  Hyalite.attach(document.body.appendChild(Object.assign(document.createElement('div'), { className: 'glass twin' })), { bevel: -5, blur: 999, dispersion: 9 });
-  check('option clamps', true, 'bevel -5 → 1, blur 999 → 64, dispersion 9 → 0.5 (no throw)');
+  // clamps — read the values back rather than trusting that nothing threw
+  const probe = document.body.appendChild(Object.assign(document.createElement('div'), { className: 'glass twin' }));
+  Hyalite.attach(probe, { bevel: -5, thickness: 10, blur: 999, dispersion: 9, rim: -1, light: 999, onBuild: (i) => { seen.probe = i; } });
+  await wait(60);
+  const pf = filterOf(v(probe));
+  const pb = pf && pf.querySelector('feGaussianBlur');
+  const ps = pf ? Array.from(pf.querySelectorAll('feDisplacementMap')).map((n) => +n.getAttribute('scale')) : [];
+  check('bevel −5 clamps to 1', seen.probe && seen.probe.bevel === 1, seen.probe && `bevel ${seen.probe.bevel}px`);
+  check('blur 999 clamps to 64', pb && +pb.getAttribute('stdDeviation') === 64, pb && `stdDeviation ${pb.getAttribute('stdDeviation')}`);
+  check('dispersion 9 clamps to 0.5', ps.length === 3 && Math.abs(ps[2] / ps[1] - 1.5) < 0.01, `scales ${ps.join(' / ') || '—'}`);
+  check('rim −1 clamps to 0 (pass dropped)', !!pf && !pf.querySelector('feFuncA'), pf ? 'no feFuncA' : 'no filter');
+
+  // escape hatch for the day WebKit ships backdrop filters
+  const off = Hyalite.force(false) === false && Hyalite.supported() === false;
+  Hyalite.force(null);
+  check('force() overrides the engine sniff', off && Hyalite.supported() === true, `force(false) → off, force(null) → ${Hyalite.supported()}`);
 
   const okAll = results.every(r => r.startsWith('✓'));
   $('out').textContent = (okAll ? 'ALL OK\n' : 'FAILURES\n') + results.join('\n');

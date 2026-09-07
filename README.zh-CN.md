@@ -11,7 +11,8 @@
 ![网格底上的透镜：位移场在四角收成扇形，不折叠、不出棱。](demo/shots/playground-grid.jpg)
 
 - [`demo/index.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) 试验台：同一背景上普通模糊 vs hyalite，可拖、可交换，调倒角 / 厚度 / 模糊 / 色散 / 边缘光，切网格底或上传自己的照片。
-- [`demo/cases.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) 自检页：不对称圆角、椭圆圆角、共用滤镜的双胞胎、流式长高的气泡、参数封顶。
+- [`demo/cases.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) 自检页：不对称圆角、椭圆圆角、CSS 相邻角规则、共用滤镜的双胞胎、尺寸分桶、把贴图读回来验四分之一对称、流式长高的气泡，以及把封顶后的值真读回来核对（而不是「没抛异常就算过」）。
+- [`demo/run-cases.mjs`](demo/run-cases.mjs) 把同一个页面放进真正的 headless Chromium 里跑，直接打印红绿并带退出码：`npm test`，或者 `node demo/run-cases.mjs`（Node 22+，零依赖）。**故意用真实时间**——`--virtual-time-budget` 只快进定时器、不保证出帧，而其中两条用例等的正是帧里才会发生的事（`requestAnimationFrame` 的渐入、`ResizeObserver` 的回退），虚拟时间下它们会报假的失败。
 
 ## 用法
 
@@ -50,8 +51,9 @@ Hyalite.detach(card);
 | `Hyalite.attach(el, opts)` / `Hyalite.detach(el)` | 手动控制单个元素 |
 | `Hyalite.refresh(el)` | 按当前几何强制重算 |
 | `Hyalite.setOpts(opts)` | 改参数，所有已挂元素分帧重算；返回 Promise。后来的调用会取代先前的 |
-| `Hyalite.info()` | 最近一次建图的 `{ maxDisplacement, bevel, mapSize }` |
+| `Hyalite.info()` | 最近一次**建图**的 `{ maxDisplacement, bevel, mapSize, radii, map }` |
 | `Hyalite.supported()` | 只有 SVG backdrop 滤镜真能渲染的地方（Chromium）才是 true |
+| `Hyalite.force(true \| false \| null)` | 覆盖上面那个判断；传 `null` 回到自动嗅探。返回覆盖后的结论 |
 | `Hyalite.DEFAULTS` | 默认参数 |
 
 ### 参数
@@ -65,16 +67,23 @@ Hyalite.detach(card);
 | `blur` | 3 | 中心的磨砂，px |
 | `dispersion` | 0.05 | 色散，0–0.5。设 0 只做一次位移，明显更省 |
 | `rim` | 0.45 | 随几何走的边缘光，0–4。0 关掉 |
+| `light` | −20 | 边缘光从哪个方向来，度。0 是正上方，正值顺时针转 |
 | `materialize` | 0 | 毫秒。挂上时位移和边缘光从零推到目标值。Apple 的玻璃不是淡入，是弯光渐强 |
 | `settle` | 120 | 毫秒。元素尺寸还在变的时候显示同半径的普通模糊；最后一次变化过去 `settle` 毫秒后重算一次贴图，折射再渐入。设 0 是实时模式：节流重算，中途旧贴图被拉伸 |
 | `self` | false | 元素用 `filter: var(--hyalite)` 滤自己而不是滤背后。只做位移，见[坑](#坑) |
-| `onBuild(info)` | — | 每次建图后回调 |
+| `onBuild(info)` | — | 每次**建图**后回调；从缓存里拿到贴图重建的滤镜不算建图，不会触发 |
 
-滤镜按「尺寸＋四个圆角＋参数」缓存，几何相同的元素共用一张贴图；渐入动画跑在私有的克隆滤镜上，动一个元素不会碰到另一个。大元素的贴图会降采样（位移场是平滑的，`feImage` 拉伸回去看不出）。尺寸取排版盒，transform 不会把贴图弄歪。
+### 两级缓存
+
+**贴图**只取决于几何 ＋ `bevel` ＋ `thickness` ＋ `light`；**滤镜**在这之上再加 `blur`、`dispersion`、`rim` 和 `self`。所以 `setOpts({ blur })` 只是重搭几个 DOM 节点，内存里已有的贴图一张都不用重算。
+
+贴图的尺寸会归到桶里（每边最多放大 2%，64px 以内的小元素保持精确），于是一列只差几像素的聊天气泡共用一张贴图，而不是一条消息一张——五十张 canvas 和一张 canvas 的差别。圆角**故意不跟着桶缩放**：预先缩放等于把元素自己的宽度又塞回缓存键里，分桶就白做了。改成让 `feImage` 把桶里的贴图压回真实盒子，常见圆角下轮廓内收不到半个像素。最后一个使用者离开的贴图会先温着，之后按最旧的先淘汰。
+
+`materialize` 的渐入跑在共用滤镜的私有克隆上，动一个元素不会碰到另一个。大元素的贴图会降采样（位移场是平滑的，`feImage` 拉伸回去看不出）。尺寸取排版盒，transform 不会把贴图弄歪。
 
 ### 圆角
 
-四角各自的**圆形**半径是精确的：距离场里每个角用自己的半径。倒角封到**最大**那个角，这是故意的：聊天气泡那种 6px 的小尾角，不能把整条边的折射压扁。比倒角小的角附近，深度场会在中轴线上打个折，但方向场是按更大的矩形算的，折痕很轻。椭圆圆角（`40px / 16px`）按横向那个值近似；百分比按短边算。这不是 CSS 圆角归一化的完整复刻。
+四角各自的**圆形**半径是精确的：距离场里每个角用自己的半径。倒角封到**最大**那个角，这是故意的：聊天气泡那种 6px 的小尾角，不能把整条边的折射压扁。比倒角小的角附近，深度场会在中轴线上打个折，但方向场是按更大的矩形算的，折痕很轻。圆角按 CSS 的相邻角规则处理：只有当同一条边上的两个圆角加起来放不下时，才用**同一个**系数把四个角一起缩小，而不是每个角各自砍到短边的一半。这个区别是看得见的：320×40 的卡片写 `border-radius: 24px 24px 0 0`，浏览器画的就是 24px 的角；按老写法各自砍一刀会算成 20，于是折射的轮廓和真实玻璃边差 4px，边缘光会飘到形状外面去。半径超过短边一半时，靠近边缘（也就是倒角所在的那一圈）是准的，再往里象限 SDF 只是近似。椭圆圆角（`40px / 16px`）按横向那个值近似；百分比按短边算。
 
 ## 原理
 
@@ -96,12 +105,13 @@ Hyalite.detach(card);
 | WebKit：Safari | 接受属性，丢掉 SVG 部分（[bug 245510](https://bugs.webkit.org/show_bug.cgi?id=245510)，2026 年 9 月已有实现在评审中） | 你写的兜底 |
 | Gecko：Firefox | 没有实现 `backdrop-filter` 里的 SVG 滤镜图；从 Firefox 106 起元素按未过滤渲染，不再消失（[bug 1787623](https://bugzilla.mozilla.org/show_bug.cgi?id=1787623)） | 你写的兜底 |
 
-`CSS.supports('backdrop-filter', 'url(#x)')` 在三家都返回 true，所以 `Hyalite.supported()` 还会认一下是不是 Chromium 引擎，别处什么都不写。W3C 有一个[开放的提案](https://github.com/w3c/svgwg/issues/1142)在推动背景位移的标准化；WebKit 发布之后，要改的就是引擎检查那一行。
+`CSS.supports('backdrop-filter', 'url(#x)')` 在三家都返回 true，所以 `Hyalite.supported()` 还会认一下是不是 Chromium 引擎，别处什么都不写。W3C 有一个[开放的提案](https://github.com/w3c/svgwg/issues/1142)在推动背景位移的标准化；WebKit 发布之后，要改的就是引擎检查那一行——但你不该等我们改。那次嗅探是 2026 年 9 月的一张快照，而 backdrop 滤镜画成什么样是读不回来的，所以它必须留一个逃生舱：`Hyalite.force(true)` 或者在 `<html>` 上写 `data-hyalite="force"`，不用动源码就能把引擎打开；`force(false)` / `data-hyalite="off"` 关掉；`force(null)` 回到自动嗅探。
 
 ## 性能
 
 - 每个带 backdrop 滤镜的元素都是一个独立的渲染面。一屏适量的玻璃没问题，几百个不行。`dispersion: 0` 每个面少两次位移和两次合成。
 - 贴图在主线程上算（逐像素循环加一次 PNG 编码）。默认的 `settle` 让持续变尺寸的元素只在停下后算一次，而不是每帧一次。贴图封顶约 32 万像素。
+- 有两件事把这个循环从关键路径上挪开了：四个角相等时只算左上象限，另外三块镜像过去，逐像素的活少掉约 75%（边缘光本身不是镜像对称的——光是斜着来的——但从镜像后的法线把它还原回来只要一次点积）；以及相近尺寸共用一张贴图，所以一长串聊天记录不会一条消息建一张图。
 - 这里故意不给数字；在你自己的目标机器上量。
 
 ## 坑
@@ -116,6 +126,6 @@ Hyalite.detach(card);
 
 Apple 的 Liquid Glass（WWDC25）给了「玻璃该弯光而不是散射光」这个想法。圆角矩形 SDF → 折射 → 位移贴图 → `feDisplacementMap` 这条路已有不少项目走过，[kube.io](https://kube.io/blog/liquid-glass-css-svg/) 的物理推导最清楚。Hyalite 自己的实现取舍是：不折叠约束、大圆方向场、四角各自半径、按真实元素尺寸建图、settle / materialize 行为、私有的渐入克隆，以及一套能在真实页面上活下来的 watch/attach API。
 
-工程实现：Claude Fable 5.1（Anthropic），与 VII-Cae 结对完成；VII-Cae 负责方向、每一版的目测验收和每一个参数的手调。
+工程实现：Claude Fable 5.1（0.1.0）与 Claude Opus 5（0.2.0：两级缓存与尺寸分桶、圆角的 CSS 相邻角规则、四分之一对称、`light`、`force`，以及一个把值真读回来核对的自检页），都来自 Anthropic，都与 VII-Cae 结对完成；VII-Cae 负责方向、每一版的目测验收和每一个参数的手调。
 
 MIT © 2026 VII-Cae

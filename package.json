@@ -1,8 +1,11 @@
 {
   "name": "hyalite",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Real refraction liquid glass for the web: per-element SDF lens maps + SVG displacement + backdrop-filter. One file, no WebGL, no build step.",
   "main": "hyalite.js",
+  "scripts": {
+    "test": "node demo/run-cases.mjs"
+  },
   "files": [
     "hyalite.js",
     "hyalite.d.ts",

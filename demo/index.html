@@ -91,6 +91,7 @@
   <label>blur <input id="blur" type="range" min="0" max="12" value="0.5" step="0.5"><b id="blurV"></b></label>
   <label>dispersion <input id="dispersion" type="range" min="0" max="0.16" value="0.09" step="0.01"><b id="dispersionV"></b></label>
   <label>rim light <input id="rim" type="range" min="0" max="1.6" value="0.3" step="0.05"><b id="rimV"></b></label>
+  <label>light dir <input id="light" type="range" min="-180" max="180" value="-20" step="5"><b id="lightV"></b></label>
   <div class="hint" id="readout"></div>
   <div class="btns">
     <button id="swap">swap</button><button id="mat">materialize</button><button id="grid">grid</button>
@@ -106,8 +107,8 @@
   const $ = (s) => document.querySelector(s);
   const lens = $('#lens');
   const q = new URLSearchParams(location.search);
-  const P = { bevel: 25, thickness: 10, blur: 0.5, dispersion: 0.09, rim: 0.3 };
-  const FMT = { bevel: v => v + 'px', thickness: v => v + 'px', blur: v => v + 'px', dispersion: v => v.toFixed(2), rim: v => v.toFixed(2) };
+  const P = { bevel: 25, thickness: 10, blur: 0.5, dispersion: 0.09, rim: 0.3, light: -20 };
+  const FMT = { bevel: v => v + 'px', thickness: v => v + 'px', blur: v => v + 'px', dispersion: v => v.toFixed(2), rim: v => v.toFixed(2), light: v => v + '°' };
   const readout = (info) => { if (info) $('#readout').textContent = `max edge offset ≈ ${info.maxDisplacement.toFixed(1)}px · bevel ${info.bevel}px · map ${info.mapSize.join('×')}`; };
 
   if (q.get('bg') === 'grid') document.body.classList.add('grid');

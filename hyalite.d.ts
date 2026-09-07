@@ -1,13 +1,21 @@
-export interface HyaliteInfo { maxDisplacement: number; bevel: number; mapSize: [number, number]; }
+export interface HyaliteInfo {
+  maxDisplacement: number;
+  bevel: number;
+  /** pixel size of the map actually built (bucketed, and downsampled past ≈ 320k px) */ mapSize: [number, number];
+  /** the element's own corner radii in px, after the CSS overlap rule */ radii: [number, number, number, number];
+  /** the map itself, as a PNG data URL */ map: string;
+}
 export interface HyaliteOptions {
   /** width of the bent zone along the edge, px (clamped to the largest corner radius) */ bevel?: number;
   /** glass thickness, px */ thickness?: number;
   /** frost in the centre, px */ blur?: number;
   /** chromatic aberration 0–0.5 (0 = single pass) */ dispersion?: number;
   /** geometry-aware edge light 0–4 (0 = off) */ rim?: number;
+  /** light direction in degrees: 0 = straight above, positive = clockwise */ light?: number;
   /** ms: ramp displacement and rim from 0 on attach */ materialize?: number;
   /** ms of size stability before a rebuild (0 = live throttled rebuilds) */ settle?: number;
   /** the element filters itself (`filter:`) instead of its backdrop */ self?: boolean;
+  /** called after every *map* build; a filter rebuilt from a cached map does not build one */
   onBuild?: (info: HyaliteInfo) => void;
 }
 export interface HyaliteWatcher { stop(): void; }
@@ -20,6 +28,8 @@ export interface HyaliteAPI {
   setOpts(opts: HyaliteOptions): Promise<void>;
   info(): HyaliteInfo | null;
   supported(): boolean;
+  /** override the engine sniff; `null` goes back to sniffing. Returns the new verdict */
+  force(on: boolean | null): boolean;
   DEFAULTS: Readonly<Required<Omit<HyaliteOptions, 'onBuild'>>>;
   version: string;
 }

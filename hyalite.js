@@ -1,5 +1,5 @@
 /*!
- * hyalite v0.1.0 — real refraction "liquid glass" for the web.
+ * hyalite v0.2.0 — real refraction "liquid glass" for the web.
  * https://github.com/VII-Cae/hyalite--liquid-glass · MIT © 2026 VII-Cae
  *
  * How it works
@@ -15,8 +15,9 @@
  *   JS:   const w = Hyalite.watch(document.body, '.glass', { bevel: 16, thickness: 10, blur: 3 });  w.stop()
  *         Hyalite.attach(el, opts) / Hyalite.detach(el) / Hyalite.refresh(el)
  *         Hyalite.setOpts({ blur: 1 })      // retune everything, returns a Promise (a newer call cancels an older one)
- *         Hyalite.info()                    // { maxDisplacement, bevel, mapSize } of the last build
+ *         Hyalite.info()                    // { maxDisplacement, bevel, mapSize, radii, map } of the last build
  *         Hyalite.supported()               // true only where SVG backdrop filters really render (Chromium)
+ *         Hyalite.force(true|false|null)    // override that verdict; null goes back to sniffing
  *
  * Options (all clamped to sane ranges)
  *   bevel        width of the bent zone along the edge, px. Clamped to the largest corner radius
@@ -24,13 +25,14 @@
  *   blur         frost in the centre, px (feGaussianBlur stdDeviation)
  *   dispersion   chromatic aberration, 0–0.5 (0 = single pass, cheaper)
  *   rim          geometry-aware edge light, 0–4 (0 = off)
+ *   light        light direction in degrees: 0 = straight above, positive = clockwise
  *   materialize  ms — on attach, ramp displacement + rim from 0 (Apple's "materialize")
  *   settle       ms — while an element keeps resizing it shows a plain blur; `settle` ms after the
  *                last change the map is rebuilt once and the refraction ramps back in.
  *                0 = live mode: throttled rebuilds (≤ 1 per 90 ms) with the old map stretched meanwhile.
  *   self         true when the element uses `filter:` on itself instead of `backdrop-filter`
  *                (displacement only: no blur, no dispersion, no rim — see notes)
- *   onBuild(info) called after every map build
+ *   onBuild(info) called after every *map* build (a filter rebuilt from a cached map does not build one)
  *
  * Three rules learned the hard way (each one leaves a visible artifact if broken)
  *   1. Displacement must not fold: the decay slope is capped at MAX_SLOPE px/px. At 1 the
@@ -41,18 +43,33 @@
  *   3. Direction is taken from a larger rounded rect (radius + bevel), so the turn from
  *      "pull down" to "pull right" is spread along a longer arc — otherwise corners look like a ridge.
  *
+ * Caching, in two levels
+ *   A *map* depends only on geometry + bevel + thickness + light; a *filter* adds blur, dispersion,
+ *   rim and self. So `setOpts({ blur })` rebuilds a handful of DOM nodes and reuses every map.
+ *   Map sizes are bucketed (≤ 2 % per side; elements up to QZ_MIN px stay exact) so a column of chat
+ *   bubbles a few pixels apart shares one map. The radii are deliberately *not* rescaled to match —
+ *   that would put the element's own width back into the key and defeat the bucket; feImage squeezes
+ *   the map by up to 2 % instead, which pulls the outline in by under half a pixel at ordinary radii.
+ *   Maps whose last user went away stay warm (MAX_IDLE_MAPS of them), then go oldest-first.
+ *
  * Notes
- *   · Filters are cached by geometry + options and shared; the materialize ramp runs on a private
- *     clone of the shared filter so animating one element never touches another.
+ *   · The materialize ramp runs on a private clone of the shared filter, so animating one element
+ *     never touches another.
  *   · `self` mode exists because the 3-pass dispersion sum is only valid for opaque sources.
  *     On a translucent layer alpha is added three times and clamped, which darkens the colour.
  *   · `--hyalite` is an inherited custom property: consume it only on the attached element.
  *   · Maps for large elements are downsampled (MAX_MAP_PX); the field is smooth, feImage stretches
- *     it back without visible loss.
- *   · Sizes come from offsetWidth/Height (layout box, transform-proof). Circular per-corner radii
- *     are exact; elliptical radii use their horizontal value; % radii resolve against the shorter side.
+ *     it back without visible loss. With four equal corners only one quadrant is computed and the
+ *     other three are mirrored — the rim light is not symmetric, but redoing it costs one dot product.
+ *   · Sizes come from offsetWidth/Height (layout box, transform-proof). Corner radii follow the CSS
+ *     overlap rule — one shared shrink factor, not a per-corner clamp — so a 320×40 card with
+ *     `border-radius: 24px 24px 0 0` really gets 24px corners. A radius past half the short side is
+ *     honoured near the edge, where the bevel lives; deeper in, the quadrant SDF is approximate.
+ *     Elliptical radii use their horizontal value; % radii resolve against the shorter side.
  *   · Nothing is written when unsupported, so the CSS fallback wins. Firefox renders the element
- *     unfiltered for SVG backdrop filters; Safari keeps the blur only (a WebKit implementation is in review).
+ *     unfiltered for SVG backdrop filters; Safari keeps the blur only (a WebKit implementation is in
+ *     review). When it ships, `Hyalite.force(true)` or `<html data-hyalite="force">` turns the engine
+ *     on without editing this file.
  *   · Respects prefers-reduced-motion (no ramps).
  *   · feImage uses a data: URL — a strict CSP needs `img-src data:`.
  */
@@ -63,20 +80,28 @@
   const VAR = '--hyalite';
   const N_GLASS = 1.5;             // refractive index of ordinary glass
   const MAX_SLOPE = 0.85;          // max decay slope of the displacement (rule 1)
-  const LIGHT = norm(-0.35, -1);   // light from the upper left (screen y points down)
-  const DEFAULTS = { bevel: 16, thickness: 10, blur: 3, dispersion: 0.05, rim: 0.45, materialize: 0, settle: 120, self: false };
-  const LIMITS = { bevel: [1, 400], thickness: [0, 400], blur: [0, 64], dispersion: [0, 0.5], rim: [0, 4], materialize: [0, 10000], settle: [0, 10000] };
+  const DEFAULTS = { bevel: 16, thickness: 10, blur: 3, dispersion: 0.05, rim: 0.45, light: -20, materialize: 0, settle: 120, self: false };
+  const LIMITS = { bevel: [1, 400], thickness: [0, 400], blur: [0, 64], dispersion: [0, 0.5], rim: [0, 4], light: [-180, 180], materialize: [0, 10000], settle: [0, 10000] };
   const LIVE_MIN_MS = 90;          // live mode: throttle for continuous resizes
   const SETTLE_RAMP_MS = 160;      // after a settle rebuild the refraction ramps back in
   const MAX_MAP_PX = 320000;       // ≈ 565×565: larger elements get a downsampled map
+  const QZ = 1.02, QZ_MIN = 64;    // map size buckets: ≤ 2 % per side; elements this small stay exact
+  const LOG_QZ = Math.log(QZ);
+  const MAX_IDLE_MAPS = 24;        // maps nobody uses stay warm this many deep, then go oldest-first
 
   let host = null;                 // hidden <svg> holding every <filter>
   let seq = 0, optsGen = 0, lastInfo = null;
-  const filters = new Map();       // key → { id, refs, el }
+  const filters = new Map();       // filterKey → { id, refs, el, mapKey }
+  const maps = new Map();          // mapKey → { url, maxd, refs, key }
+  const idleMaps = new Map();      // the subset of `maps` with refs === 0, in eviction order
   const bound = new Map();         // element → state
   const watchers = new Set();
 
-  function norm(x, y) { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; }
+  /* Light direction from an angle: 0° = straight above, positive = clockwise (screen y points down) */
+  const lightOf = (deg) => { const a = deg * Math.PI / 180; return [Math.sin(a), -Math.cos(a)]; };
+  /* Size bucket: monotone, never below v, within QZ of it. Small elements are returned untouched. */
+  const qz = (v) => v <= QZ_MIN ? v : Math.max(v, Math.ceil(Math.pow(QZ, Math.ceil(Math.log(v) / LOG_QZ - 1e-9))));
+
   function sanitize(o) {
     const s = Object.assign({}, o);
     for (const k in LIMITS) if (k in s) {
@@ -134,7 +159,9 @@
     const MAXD = Math.max(tab[0], 1e-6);
     const mAt = (d) => { const f = Math.min(N - 1e-6, d / STEP), i = Math.floor(f), u = f - i; return tab[i] * (1 - u) + tab[i + 1] * u; };
     const sdf = makeSDF(W, H, radii);
-    const cap = Math.min(W, H) / 2 - 0.5;
+    // A radius may legitimately pass half the short side (CSS only shrinks radii that share an edge),
+    // so the direction field is capped at the short side itself rather than at half of it.
+    const cap = Math.min(W, H) - 0.5;
     const sdfDir = makeSDF(W, H, radii.map((R) => Math.min(R + B, cap)));   // rule 3
     // Downsampling: map pixel (x, y) ↔ CSS pixel ((x+.5)/k, (y+.5)/k); offsets stay in CSS px
     const k = Math.min(1, Math.sqrt(MAX_MAP_PX / (W * H)));
@@ -142,30 +169,43 @@
     const c = document.createElement('canvas'); c.width = MW; c.height = MH;
     const ctx = c.getContext('2d');
     const img = ctx.createImageData(MW, MH), d = img.data;
-    const e = 0.5;
-    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-      const px = (x + .5) / k, py = (y + .5) / k;
-      const depth = -sdf(px, py);
-      let dx = 0, dy = 0, lit = 0;
-      if (depth < B) {
-        const dd = Math.max(0, depth);
-        const m = mAt(dd);
-        let gx = (sdfDir(px + e, py) - sdfDir(px - e, py)) / (2 * e);
-        let gy = (sdfDir(px, py + e) - sdfDir(px, py - e)) / (2 * e);
-        const gl = Math.hypot(gx, gy) || 1; gx /= gl; gy /= gl;   // outward normal
-        dx = -gx * m; dy = -gy * m;                                // sample inward → the rim magnifies
-        const facing = gx * LIGHT[0] + gy * LIGHT[1];
-        lit = profile(dd, B, o.thickness).tilt * (Math.max(0, facing) * 0.62 + Math.max(0, -facing) * 0.20);
-      }
+    const e = 0.5, L = lightOf(o.light);
+    const put = (x, y, dx, dy, lit) => {
       const i = (y * MW + x) * 4;
       d[i] = Math.round(128 + dx / MAXD * 127);
       d[i + 1] = Math.round(128 + dy / MAXD * 127);
       d[i + 2] = Math.round(255 * Math.min(1, lit));
       d[i + 3] = 255;
+    };
+    // The rim light is *not* mirror-symmetric — the light arrives at an angle — but recovering it
+    // from a mirrored normal is one dot product, so everything expensive is still done once.
+    const litOf = (tilt, gx, gy) => { const f = gx * L[0] + gy * L[1]; return tilt * (Math.max(0, f) * 0.62 + Math.max(0, -f) * 0.20); };
+    const sym = radii[0] === radii[1] && radii[1] === radii[2] && radii[2] === radii[3];
+    const XN = sym ? Math.ceil(MW / 2) : MW, YN = sym ? Math.ceil(MH / 2) : MH;
+    for (let y = 0; y < YN; y++) for (let x = 0; x < XN; x++) {
+      const px = (x + .5) / k, py = (y + .5) / k;
+      const depth = -sdf(px, py);
+      let m = 0, gx = 0, gy = 0, tilt = 0;
+      if (depth < B) {
+        const dd = Math.max(0, depth);
+        m = mAt(dd);
+        gx = (sdfDir(px + e, py) - sdfDir(px - e, py)) / (2 * e);
+        gy = (sdfDir(px, py + e) - sdfDir(px, py - e)) / (2 * e);
+        const gl = Math.hypot(gx, gy) || 1; gx /= gl; gy /= gl;   // outward normal
+        tilt = profile(dd, B, o.thickness).tilt;
+      }
+      put(x, y, -gx * m, -gy * m, litOf(tilt, gx, gy));            // sample inward → the rim magnifies
+      if (sym) {                                                   // equal corners ⇒ mirror the other three quadrants
+        const mx = MW - 1 - x, my = MH - 1 - y;
+        if (mx !== x) put(mx, y, gx * m, -gy * m, litOf(tilt, -gx, gy));
+        if (my !== y) put(x, my, -gx * m, gy * m, litOf(tilt, gx, -gy));
+        if (mx !== x && my !== y) put(mx, my, gx * m, gy * m, litOf(tilt, -gx, -gy));
+      }
     }
     ctx.putImageData(img, 0, 0);
-    lastInfo = { maxDisplacement: MAXD, bevel: B, mapSize: [MW, MH] };
-    return { url: c.toDataURL('image/png'), maxd: MAXD };
+    const url = c.toDataURL('image/png');
+    lastInfo = { maxDisplacement: MAXD, bevel: B, mapSize: [MW, MH], radii: radii.slice(), map: url };
+    return { url, maxd: MAXD };
   }
 
   const SVG = 'http://www.w3.org/2000/svg';
@@ -218,18 +258,23 @@
   }
 
   /* Corner radii in px. Computed values may be "16px", "50%" or "16px 20px" (elliptical — the
-     horizontal one is used); percentages resolve against the shorter side. */
+     horizontal one is used); percentages resolve against the shorter side.
+     CSS shrinks radii by one *shared* factor when two of them do not fit on the edge they share; it
+     does not clamp each corner on its own. Clamping each to half the short side gets a 320×40 card
+     with `border-radius: 24px 24px 0 0` wrong — those corners really are 24px. */
   function radiiOf(el, W, H) {
     const cs = getComputedStyle(el);
     const one = (v) => {
       const t = String(v).trim().split(/\s+/)[0] || '0';
       const n = parseFloat(t);
       if (!Number.isFinite(n)) return 0;
-      return t.endsWith('%') ? n / 100 * Math.min(W, H) : n;
+      return Math.max(0, t.endsWith('%') ? n / 100 * Math.min(W, H) : n);
     };
     const r = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(one);
-    const lim = Math.min(W, H) / 2;
-    return r.map((v) => Math.max(0, Math.min(v, lim)));
+    let f = 1;
+    for (const [len, sum] of [[W, r[0] + r[1]], [H, r[1] + r[2]], [W, r[2] + r[3]], [H, r[3] + r[0]]])
+      if (sum > len) f = Math.min(f, len / sum);
+    return f < 1 ? r.map((v) => v * f) : r;
   }
   function sizeOf(el) {        // layout box (transform-proof); fall back to the rect for inline / SVG elements
     let W = el.offsetWidth, H = el.offsetHeight;
@@ -237,15 +282,45 @@
     return [Math.round(W), Math.round(H)];
   }
 
+  /* A map depends only on geometry + bevel + thickness + light, so a filter rebuilt for a new blur
+     or rim reuses it. Sizes go into buckets so that near-identical elements — a column of chat
+     bubbles, say — share one map. The radii are *not* rescaled to match: pre-scaling them would put
+     the element's own width back into the key and defeat the whole thing. feImage squeezes the map
+     by up to QZ instead, which shrinks the outline by under half a pixel at ordinary radii. */
+  function acquireMap(W, H, radii, o) {
+    const BW = qz(W), BH = qz(H);
+    const br = radii.map((r) => +r.toFixed(2));                    // quantised so the key and the map agree
+    const key = `${BW}x${BH}|${br.join(',')}|${o.bevel}|${o.thickness}|${o.light}`;
+    let rec = maps.get(key);
+    if (rec) idleMaps.delete(key);
+    else {
+      rec = buildMap(BW, BH, br, o);
+      rec.refs = 0; rec.key = key;
+      maps.set(key, rec);
+      lastInfo.radii = radii.slice();          // report the element's own radii, not the bucketed ones
+      if (typeof o.onBuild === 'function') o.onBuild(lastInfo);
+    }
+    rec.refs++;
+    return rec;
+  }
+  function releaseMap(key) {
+    const rec = maps.get(key);
+    if (!rec || --rec.refs > 0) return;
+    idleMaps.set(key, rec);                    // keep it warm: a retune or a resize back usually wants it again
+    for (const k of idleMaps.keys()) {
+      if (idleMaps.size <= MAX_IDLE_MAPS) break;
+      idleMaps.delete(k); maps.delete(k);
+    }
+  }
+
   function acquire(key, W, H, radii, o) {
     let rec = filters.get(key);
     if (!rec) {
       const id = 'hyalite-' + (++seq);
-      const map = buildMap(W, H, radii, o);
-      rec = { id, refs: 0, el: buildFilter(id, W, H, map, o) };
+      const map = acquireMap(W, H, radii, o);
+      rec = { id, refs: 0, el: buildFilter(id, W, H, map, o), mapKey: map.key };
       ensureHost().appendChild(rec.el);
       filters.set(key, rec);
-      if (typeof o.onBuild === 'function') o.onBuild(lastInfo);
     }
     rec.refs++;
     return rec;
@@ -253,7 +328,7 @@
   function release(key) {
     const rec = filters.get(key);
     if (!rec) return;
-    if (--rec.refs <= 0) { rec.el.remove(); filters.delete(key); }
+    if (--rec.refs <= 0) { rec.el.remove(); filters.delete(key); releaseMap(rec.mapKey); }
   }
 
   const setFallback = (el, st) => el.style.setProperty(VAR, st.opts.self ? 'none' : `blur(${st.opts.blur}px)`);
@@ -267,7 +342,7 @@
     if (W < 4 || H < 4) return;                       // not laid out yet / hidden
     const radii = radiiOf(el, W, H);
     const o = st.opts;
-    const key = `${W}x${H}|${radii.join(',')}|${o.bevel}|${o.thickness}|${o.blur}|${o.rim}|${o.dispersion}|${o.self ? 'self' : 'back'}`;
+    const key = `${W}x${H}|${radii.join(',')}|${o.bevel}|${o.thickness}|${o.blur}|${o.rim}|${o.dispersion}|${o.light}|${o.self ? 'self' : 'back'}`;
     st.w = W; st.h = H;
     let rec;
     if (key === st.key) rec = filters.get(key);       // same geometry (e.g. back from a settle): just re-point
@@ -417,11 +492,17 @@
 
   /* CSS.supports says yes on Firefox too, but Firefox paints the element unfiltered for
      backdrop-filter:url() and Safari keeps only the blur. So we also require a Chromium engine
-     (Chrome, Edge, Arc, Brave, Electron…). */
-  let supportedMemo = null;
+     (Chrome, Edge, Arc, Brave, Electron…). That sniff is a snapshot of September 2026 and there is
+     no way to read back what a backdrop filter painted, so it needs an escape hatch: WebKit has an
+     implementation in review, and the day it ships `Hyalite.force(true)` or `<html data-hyalite="force">`
+     turns the engine on without editing this file. `force(null)` goes back to sniffing. */
+  let supportedMemo = null, forced = null;
   const supported = () => {
+    if (forced !== null) return forced;
     if (supportedMemo !== null) return supportedMemo;
     try {
+      const flag = document.documentElement.getAttribute('data-hyalite');
+      if (flag === 'force' || flag === 'off') return (supportedMemo = flag === 'force');
       const css = CSS.supports('backdrop-filter', 'url(#x)') || CSS.supports('-webkit-backdrop-filter', 'url(#x)');
       const uad = navigator.userAgentData;
       const chromium = uad && uad.brands ? uad.brands.some((b) => /Chromium/i.test(b.brand))
@@ -430,8 +511,9 @@
     } catch (e) { supportedMemo = false; }
     return supportedMemo;
   };
+  function force(v) { forced = (v === null || v === undefined) ? null : !!v; supportedMemo = null; return supported(); }
 
-  const API = { watch, unwatch, attach, detach, refresh, setOpts, info, supported, DEFAULTS, version: '0.1.0' };
+  const API = { watch, unwatch, attach, detach, refresh, setOpts, info, supported, force, DEFAULTS, version: '0.2.0' };
   root.Hyalite = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);

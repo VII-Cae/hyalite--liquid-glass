@@ -12,7 +12,7 @@ Hyalite treats an element as a slab of glass with a rounded bevel. For the eleme
 
 - [`demo/index.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) — plain blur vs hyalite on the same background: drag, swap, tune bevel / thickness / blur / dispersion / rim, switch to a grid or load your own photo.
 - [`demo/cases.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) — self-checking page: asymmetric, elliptical and overlap-rule radii, twins sharing a filter, size buckets, quarter-symmetry read back out of the map, a streaming bubble, clamps read back rather than assumed.
-- [`demo/run-cases.mjs`](demo/run-cases.mjs) — the same page in a real headless Chromium, printing red/green with an exit code: `npm test`, or `node demo/run-cases.mjs` (Node 22+, no dependencies). Real time on purpose — `--virtual-time-budget` fast-forwards timers without promising frames, and two cases wait on a `requestAnimationFrame` ramp and a `ResizeObserver`, so under virtual time they report false failures.
+- [`demo/run-cases.mjs`](https://github.com/VII-Cae/hyalite--liquid-glass/blob/main/demo/run-cases.mjs) — not a page to open: a command-line script that runs `cases.html` in a real headless Chromium and prints red/green with an exit code. `npm test`, or `node demo/run-cases.mjs` (Node 22+, no dependencies). Real time on purpose — `--virtual-time-budget` fast-forwards timers without promising frames, and two cases wait on a `requestAnimationFrame` ramp and a `ResizeObserver`, so under virtual time they report false failures.
 
 ## Use
 

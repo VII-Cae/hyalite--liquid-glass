@@ -10,8 +10,8 @@ Hyalite treats an element as a slab of glass with a rounded bevel. For the eleme
 
 ![The lens on a grid: the field fans into the corners, nothing folds, nothing creases.](demo/shots/playground-grid.jpg)
 
-- `demo/index.html` — plain blur vs hyalite on the same background: drag, swap, tune bevel / thickness / blur / dispersion / rim, switch to a grid or load your own photo.
-- `demo/cases.html` — self-checking page: asymmetric and elliptical radii, twins sharing a filter, a streaming bubble, clamps.
+- [`demo/index.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) — plain blur vs hyalite on the same background: drag, swap, tune bevel / thickness / blur / dispersion / rim, switch to a grid or load your own photo.
+- [`demo/cases.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) — self-checking page: asymmetric and elliptical radii, twins sharing a filter, a streaming bubble, clamps.
 
 ## Use
 

@@ -10,8 +10,8 @@
 
 ![网格底上的透镜：位移场在四角收成扇形，不折叠、不出棱。](demo/shots/playground-grid.jpg)
 
-- `demo/index.html` 试验台：同一背景上普通模糊 vs hyalite，可拖、可交换，调倒角 / 厚度 / 模糊 / 色散 / 边缘光，切网格底或上传自己的照片。
-- `demo/cases.html` 自检页：不对称圆角、椭圆圆角、共用滤镜的双胞胎、流式长高的气泡、参数封顶。
+- [`demo/index.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) 试验台：同一背景上普通模糊 vs hyalite，可拖、可交换，调倒角 / 厚度 / 模糊 / 色散 / 边缘光，切网格底或上传自己的照片。
+- [`demo/cases.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) 自检页：不对称圆角、椭圆圆角、共用滤镜的双胞胎、流式长高的气泡、参数封顶。
 
 ## 用法
 

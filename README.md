@@ -68,6 +68,7 @@ All numeric options are clamped to sane ranges.
 | `dispersion` | 0.05 | chromatic aberration, 0–0.5. `0` is a single displacement pass and noticeably cheaper |
 | `rim` | 0.45 | geometry-aware edge light, 0–4. `0` turns it off |
 | `light` | −145 | direction the rim light comes from, degrees. `0` is straight above, positive turns clockwise. The default sits low on the left, against the drop shadow, which reads as floating rather than ceiling-lit — chosen by eye |
+| `smooth` | 1 | px. Blur that hides Chromium’s nearest-neighbour staircase along the rim (see [No stairs](#how-it-works)). It is applied *between* the two displacement passes and only inside the bevel ring; the centre never sees it. `0` goes back to a single pass — cheaper, and the stairs come back |
 | `materialize` | 0 | ms. On attach, ramp displacement and rim light from zero. Apple’s glass does not fade in; its lensing ramps up |
 | `settle` | 120 | ms. While an element keeps resizing it shows a plain blur of the same radius; `settle` ms after the last change the map is rebuilt once and the refraction ramps back in. `0` = live mode: throttled rebuilds with the old map stretched meanwhile |
 | `self` | false | the element filters *itself* (`filter: var(--hyalite)`) instead of its backdrop. Displacement only — see [Gotchas](#gotchas) |
@@ -75,7 +76,7 @@ All numeric options are clamped to sane ranges.
 
 ### Caching, in two levels
 
-A **map** depends only on geometry + `bevel` + `thickness` + `light`. A **filter** adds `blur`, `dispersion`, `rim` and `self`. So `setOpts({ blur })` rebuilds a handful of DOM nodes and reuses every map that is already in memory.
+A **map** depends only on geometry + `bevel` + `thickness` + `light`. A **filter** adds `blur`, `dispersion`, `rim`, `smooth` and `self`. A map build always produces both PNGs (outer and inner pass), so `smooth` can be toggled without a rebuild. So `setOpts({ blur })` rebuilds a handful of DOM nodes and reuses every map that is already in memory.
 
 Map sizes go into buckets (at most 2 % per side; elements up to 64px stay exact), so a column of chat bubbles a few pixels apart shares one map instead of one map each — which is the difference between one canvas and fifty. The radii are deliberately *not* rescaled to match the bucket: pre-scaling them would put the element’s own width back into the cache key and defeat the whole thing. `feImage` squeezes the bucketed map onto the real box instead, pulling the outline in by under half a pixel at ordinary radii. Maps whose last user went away stay warm for a while, then go oldest-first.
 
@@ -90,10 +91,11 @@ Per-corner *circular* radii are exact: each corner uses its own radius in the di
 1. **Distance field.** A signed distance function of the rounded rectangle (per-corner radii) gives, for every pixel, how deep inside the edge it sits.
 2. **Snell’s law.** The glass is a slab of `thickness` with a quarter-circle bevel of width `bevel`. A view ray refracts toward the surface normal at the bevel (n = 1.5) and travels through the remaining glass to the backdrop. The lateral offset is the displacement; it is largest at the rim and decays to zero at the inner edge of the bevel.
 3. **No folding.** The decay slope is capped at 0.85 px/px. At 1 the sampling point stands still (infinite stretch); above 1 the image mirrors and you get doubled lines along the rim. This is a constraint on the mapping, not a taste parameter.
-4. **Direction.** Offsets point *inward* along the normal of a slightly larger rounded rect (radius + bevel), so the turn from “pull down” to “pull right” is spread along a longer arc. Taking the direction from the true radius makes every corner look like a ridge.
-5. **Encoding.** Red = x offset, green = y offset, 128 = no move, blue = rim light (how much the bevel faces the light). The map is a PNG data URL.
-6. **The filter.** `feImage` (the map) → `feGaussianBlur` (frost) → `feDisplacementMap` (one pass, or one per colour channel when `dispersion > 0`, summed with `feComposite arithmetic`) → the rim light composited over. `filterUnits="userSpaceOnUse"` with the element’s exact size, `color-interpolation-filters="sRGB"` so that 128 really means zero.
-7. **`backdrop-filter: url(#id)`** does the rest, live, for whatever is behind the element.
+4. **No stairs.** Chromium samples the bent picture nearest-neighbour — Skia’s displacement effect is pinned to `kNearest` ([skbug 40045448](https://issues.skia.org/40045448)). A slope of 0.85 is a 6.7× stretch, so every source pixel at the rim becomes a 6.7px block and any hard edge behind the glass turns into a staircase. Nothing in the map can fix a sampler, so the field is split into two displacement passes of equal stretch (≈ 2.6× each) that compose *exactly* to the one-pass field (the inner table is the inverse of the outer one, not a halving). Between them a `smooth`-px blur, masked to the bevel ring, melts the inner pass’s staircase before the outer pass stretches it again. 6.7px stairs at full contrast become ≈ 2.6px at a fraction of it; the centre is untouched.
+5. **Direction.** Offsets point *inward* along the normal of a slightly larger rounded rect (radius + bevel), so the turn from “pull down” to “pull right” is spread along a longer arc. Taking the direction from the true radius makes every corner look like a ridge.
+6. **Encoding.** Red = x offset, green = y offset, 128 = no move, blue = rim light (how much the bevel faces the light). The map is a PNG data URL.
+7. **The filter.** `feImage` (the map) → `feGaussianBlur` (frost) → inner `feDisplacementMap` → ring-masked `feGaussianBlur` (`smooth`) → outer `feDisplacementMap` (one pass, or one per colour channel when `dispersion > 0`, summed with `feComposite arithmetic`) → the rim light composited over. `filterUnits="userSpaceOnUse"` with the element’s exact size, `color-interpolation-filters="sRGB"` so that 128 really means zero.
+8. **`backdrop-filter: url(#id)`** does the rest, live, for whatever is behind the element.
 
 ## Browser support
 
@@ -109,7 +111,7 @@ Tested September 2026.
 
 ## Performance
 
-- Every element with a backdrop filter is its own render surface. A modest number of glass surfaces on screen is fine; hundreds are not. `dispersion: 0` drops two displacement passes and two composites per surface.
+- Every element with a backdrop filter is its own render surface. A modest number of glass surfaces on screen is fine; hundreds are not. `dispersion: 0` drops two displacement passes and two composites per surface; `smooth: 0` drops the inner pass and its ring blur (eight primitives) at the price of the rim staircase.
 - Maps are built on the main thread (a per-pixel loop plus a PNG encode). With the default `settle`, a continuously resizing element costs one build after it stops, not one per frame. Maps are capped at ≈ 320k pixels.
 - Two things keep that loop off the critical path: with four equal corners only one quadrant is computed and the other three are mirrored (≈ 75 % less per-pixel work — the rim light is not mirror-symmetric, but recovering it from a mirrored normal costs one dot product), and near-identical sizes share one map, so a long chat list does not build one map per bubble.
 - No numbers are claimed here on purpose; measure on your own targets.
@@ -126,6 +128,6 @@ Tested September 2026.
 
 Apple’s Liquid Glass (WWDC25) for the idea that glass should *bend* light rather than scatter it. Rounded-rect SDF → refraction → displacement map → `feDisplacementMap` is a route several projects have taken; [kube.io](https://kube.io/blog/liquid-glass-css-svg/) has the clearest physics write-up. Hyalite’s implementation-specific choices are the no-fold constraint, the larger-radius direction field, per-corner radii, maps built for the real element size, the settle/materialize behaviour, the private ramp clone, and a small watch/attach API that survives real pages.
 
-Engineering by Claude Fable 5.1 (0.1.0) and Claude Opus 5 (0.2.0: the two-level cache and size buckets, the CSS overlap rule for radii, quarter-symmetry, `light`, `force`, and a self-check page that reads values back instead of trusting that nothing threw) — both Anthropic, both pair-programmed with VII-Cae, who set the direction, tested every build by eye and tuned every parameter.
+Engineering by Claude Fable 5.1 (0.1.0, and 0.3.0: the two-pass split that hides Chromium’s nearest-neighbour staircase, `smooth`) and Claude Opus 5 (0.2.0: the two-level cache and size buckets, the CSS overlap rule for radii, quarter-symmetry, `light`, `force`, and a self-check page that reads values back instead of trusting that nothing threw) — both Anthropic, both pair-programmed with VII-Cae, who set the direction, tested every build by eye and tuned every parameter.
 
 MIT © 2026 VII-Cae

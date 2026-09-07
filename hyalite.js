@@ -25,7 +25,9 @@
  *   blur         frost in the centre, px (feGaussianBlur stdDeviation)
  *   dispersion   chromatic aberration, 0–0.5 (0 = single pass, cheaper)
  *   rim          geometry-aware edge light, 0–4 (0 = off)
- *   light        light direction in degrees: 0 = straight above, positive = clockwise
+ *   light        light direction in degrees: 0 = straight above, positive = clockwise. The default
+ *                −145° puts it low on the left, against the drop shadow, so the glass reads as
+ *                floating rather than lit from a ceiling. Chosen by eye, not derived.
  *   materialize  ms — on attach, ramp displacement + rim from 0 (Apple's "materialize")
  *   settle       ms — while an element keeps resizing it shows a plain blur; `settle` ms after the
  *                last change the map is rebuilt once and the refraction ramps back in.
@@ -80,7 +82,7 @@
   const VAR = '--hyalite';
   const N_GLASS = 1.5;             // refractive index of ordinary glass
   const MAX_SLOPE = 0.85;          // max decay slope of the displacement (rule 1)
-  const DEFAULTS = { bevel: 16, thickness: 10, blur: 3, dispersion: 0.05, rim: 0.45, light: -20, materialize: 0, settle: 120, self: false };
+  const DEFAULTS = { bevel: 16, thickness: 10, blur: 3, dispersion: 0.05, rim: 0.45, light: -145, materialize: 0, settle: 120, self: false };
   const LIMITS = { bevel: [1, 400], thickness: [0, 400], blur: [0, 64], dispersion: [0, 0.5], rim: [0, 4], light: [-180, 180], materialize: [0, 10000], settle: [0, 10000] };
   const LIVE_MIN_MS = 90;          // live mode: throttle for continuous resizes
   const SETTLE_RAMP_MS = 160;      // after a settle rebuild the refraction ramps back in

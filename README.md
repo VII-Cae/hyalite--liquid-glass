@@ -67,7 +67,7 @@ All numeric options are clamped to sane ranges.
 | `blur` | 3 | frost in the centre, px |
 | `dispersion` | 0.05 | chromatic aberration, 0–0.5. `0` is a single displacement pass and noticeably cheaper |
 | `rim` | 0.45 | geometry-aware edge light, 0–4. `0` turns it off |
-| `light` | −20 | direction the rim light comes from, degrees. `0` is straight above, positive turns clockwise |
+| `light` | −145 | direction the rim light comes from, degrees. `0` is straight above, positive turns clockwise. The default sits low on the left, against the drop shadow, which reads as floating rather than ceiling-lit — chosen by eye |
 | `materialize` | 0 | ms. On attach, ramp displacement and rim light from zero. Apple’s glass does not fade in; its lensing ramps up |
 | `settle` | 120 | ms. While an element keeps resizing it shows a plain blur of the same radius; `settle` ms after the last change the map is rebuilt once and the refraction ramps back in. `0` = live mode: throttled rebuilds with the old map stretched meanwhile |
 | `self` | false | the element filters *itself* (`filter: var(--hyalite)`) instead of its backdrop. Displacement only — see [Gotchas](#gotchas) |

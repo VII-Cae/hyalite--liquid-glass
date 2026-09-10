@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>hyalite · 边缘实验台</title>
+<title>hyalite · 剖面台</title>
 <script src="../hyalite.js"></script>
-<script src="lab-engine.js"></script>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#0b1016}
   body{font:13px/1.45 system-ui,-apple-system,"PingFang SC",sans-serif;color:#eee}
@@ -19,8 +18,8 @@
              font:11px/1.5 ui-monospace,Menlo,monospace;color:rgba(255,255,255,.8);text-shadow:0 1px 4px #000}
   .glass{position:relative;box-sizing:border-box;border-radius:30px;padding:20px 22px;
          background:rgba(0,0,0,.13);                       /* 铁律 1：只压暗，不提亮不提饱和 */
-         backdrop-filter:var(--gl,blur(3px));-webkit-backdrop-filter:var(--gl,blur(3px));
-         box-shadow:var(--edge,none), 0 16px 42px rgba(0,0,0,.36)}
+         backdrop-filter:var(--hyalite,blur(3px));-webkit-backdrop-filter:var(--hyalite,blur(3px));
+         box-shadow:var(--hyalite-edge,none), 0 16px 42px rgba(0,0,0,.36)}
   .glass h3{margin:0 0 3px;font-size:17px;font-weight:600}
   .glass p{margin:0;font-size:12px;opacity:.75}
   .glass .bar{margin-top:14px;height:26px;border-radius:13px;background:rgba(255,255,255,.16)}
@@ -29,8 +28,8 @@
   .dots{position:absolute;left:28%;top:52%;display:flex;gap:26px}
   .dot{position:relative;width:132px;height:132px;border-radius:50%;box-sizing:border-box;
        display:grid;place-items:center;background:rgba(0,0,0,.05);
-       backdrop-filter:var(--gl,blur(3px));-webkit-backdrop-filter:var(--gl,blur(3px));
-       box-shadow:var(--edge,none)}
+       backdrop-filter:var(--hyalite,blur(3px));-webkit-backdrop-filter:var(--hyalite,blur(3px));
+       box-shadow:var(--hyalite-edge,none)}
   .dot b{font:300 46px/1 system-ui;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.4)}
   .dot i{position:absolute;bottom:-22px;font:11px/1 ui-monospace,Menlo,monospace;
          font-style:normal;color:rgba(255,255,255,.75);text-shadow:0 1px 4px #000}
@@ -74,57 +73,47 @@
 </style></head><body>
 
 <div id="stage">
-  <div class="slot"><div class="glass" id="g0"><h3>0.3.0</h3><p>现版：弯，但不改亮度</p><div class="bar"><i></i></div></div>
-    <div class="tag">① 线上版</div></div>
-  <div class="slot"><div class="glass" id="g1"><h3>+ 焦散</h3><p>亮度跟着位移场走</p><div class="bar"><i></i></div></div>
-    <div class="tag">② 加明暗剖面</div></div>
-  <div class="slot"><div class="glass" id="g2"><h3>+ 锐边</h3><p>白边走 CSS，不进滤镜</p><div class="bar"><i></i></div></div>
-    <div class="tag">③ ② ＋ CSS 白边</div></div>
+  <div class="slot"><div class="glass" id="g0"><h3>circle</h3><p>四分之一圆，最陡</p><div class="bar"><i></i></div></div>
+    <div class="tag">circle</div></div>
+  <div class="slot"><div class="glass" id="g1"><h3>squircle</h3><p>接平板接得更缓</p><div class="bar"><i></i></div></div>
+    <div class="tag">squircle</div></div>
+  <div class="slot"><div class="glass" id="g2"><h3>lip</h3><p>外凸内凹，多一组明暗带</p><div class="bar"><i></i></div></div>
+    <div class="tag">lip</div></div>
   <div class="dots">
-    <div class="dot" id="d0"><b>1</b><i>现版</i></div>
-    <div class="dot" id="d1"><b>2</b><i>V2</i></div>
-    <div class="dot" id="d2"><b>3</b><i>V2</i></div>
+    <div class="dot" id="d0"><b>1</b><i>circle</i></div>
+    <div class="dot" id="d1"><b>2</b><i>squircle</i></div>
+    <div class="dot" id="d2"><b>3</b><i>lip</i></div>
   </div>
 </div>
 
 <div id="hud">
-  <h1 id="fold">边缘实验台</h1>
+  <h1 id="fold">剖面台</h1>
   <div class="sec">几何</div>
-  <label>倒角<input type="range" id="bevel" min="4" max="140" step="1" value="16"><span id="v_bevel"></span></label>
-  <label>厚度<input type="range" id="thickness" min="0" max="220" step="1" value="19"><span id="v_thickness"></span></label>
-  <label>斜率<input type="range" id="slope" min="0.3" max="3" step="0.05" value="0.85"><span id="v_slope"></span></label>
-  <label>铺满<input type="range" id="fill" min="0" max="1" step="1" value="0"><span id="v_fill"></span></label>
-  <label>剖面<select id="shape">
-    <option value="squircle">squircle</option>
-    <option value="circle">circle</option>
-    <option value="lip">lip 唇形</option>
-  </select><span></span></label>
-  <label>唇量<input type="range" id="lip" min="0" max="0.6" step="0.02" value="0.3"><span id="v_lip"></span></label>
-  <div class="sec">明暗（新）</div>
-  <label>焦散暗<input type="range" id="caustic" min="0" max="1" step="0.02" value="0.3"><span id="v_caustic"></span></label>
-  <label>边宽<input type="range" id="edgeW" min="0.5" max="24" step="0.5" value="3"><span id="v_edgeW"></span></label>
-  <label>饱和<input type="range" id="sat" min="0.6" max="2.2" step="0.02" value="1.25"><span id="v_sat"></span></label>
-  <label>透射损失<input type="range" id="absorb" min="0" max="1" step="0.02" value="0.15"><span id="v_absorb"></span></label>
-  <label>泛光<input type="range" id="env" min="0" max="1.5" step="0.02" value="0.05"><span id="v_env"></span></label>
-  <label>白边强度<input type="range" id="spec" min="0" max="2" step="0.02" value="1.3"><span id="v_spec"></span></label>
-  <label>白边锐度<input type="range" id="sharp" min="2" max="64" step="1" value="44"><span id="v_sharp"></span></label>
+  <label>倒角<input type="range" id="bevel" min="4" max="200" step="1" value="41"><span id="v_bevel"></span></label>
+  <label>厚度<input type="range" id="thickness" min="0" max="220" step="1" value="96"><span id="v_thickness"></span></label>
+  <label>斜率<input type="range" id="slope" min="0.3" max="4" step="0.05" value="2.7"><span id="v_slope"></span></label>
+  <div class="sec">边缘</div>
+  <label>暗<input type="range" id="shade" min="0" max="2" step="0.02" value="0.62"><span id="v_shade"></span></label>
+  <label>反光<input type="range" id="rim" min="0" max="4" step="0.02" value="1.76"><span id="v_rim"></span></label>
+  <label>边宽<input type="range" id="edgeW" min="0.5" max="40" step="0.5" value="6.5"><span id="v_edgeW"></span></label>
+  <label>外描边<input type="range" id="edge" min="0" max="2" step="0.02" value="0.32"><span id="v_edge"></span></label>
   <div class="sec">通用</div>
   <label>模糊<input type="range" id="blur" min="0" max="14" step="0.25" value="1"><span id="v_blur"></span></label>
-  <label>色散<input type="range" id="dispersion" min="0" max="3" step="0.05" value="0.6"><span id="v_dispersion"></span></label>
-  <label>光向<input type="range" id="light" min="-180" max="180" step="5" value="-145"><span id="v_light"></span></label>
-  <label>外描边<input type="range" id="cssEdge" min="0" max="1.2" step="0.02" value="0.7"><span id="v_cssEdge"></span></label>
+  <label>色散<input type="range" id="dispersion" min="0" max="8" step="0.05" value="1.6"><span id="v_dispersion"></span></label>
+  <label>光向<input type="range" id="light" min="-180" max="180" step="5" value="-140"><span id="v_light"></span></label>
+  <label>smooth<input type="range" id="smooth" min="0" max="4" step="0.25" value="1"><span id="v_smooth"></span></label>
   <div class="btns">
     <button id="bg_test" class="on">测试底</button><button id="bg_stripe">条纹</button><button id="bg_grid">网格</button><button id="bg_dark">暗底</button>
     <label class="file">拖/选图<input type="file" id="pick" accept="image/*"></label>
   </div>
   <div class="btns">
-    <button id="reset">复位</button><button id="p_glow">宽泛光</button><button id="p_lens">整块透镜</button><button id="p_copy">抄参数</button>
+    <button id="reset">复位</button><button id="p_nofold">不折叠</button><button id="p_copy">抄参数</button>
   </div>
-  <div class="note" id="note">把 macOS 控制中心截个图拖进来，就能跟真货并排比。<br>三块玻璃可以拖动。</div>
+  <div class="note" id="note">三种倒角剖面并排，同一组参数。示波器画的是 lip 那块。<br>玻璃可以拖动；拖张图进来当底。</div>
 </div>
 
 <div id="scope">
-  <h2>边缘剖面（外沿 → 内沿）</h2>
+  <h2>剖面（外沿 → 内沿）· lip</h2>
   <canvas id="curve" width="612" height="208"></canvas>
   <canvas id="strip" width="306" height="30"></canvas>
   <div class="key"><b style="color:#7fcdcd">— 位移 m</b><b style="color:#ffb4a2">— 亮度 1+m′</b><b style="color:#dfc174">— 净剖面 E</b></div>
@@ -135,86 +124,62 @@
 /* ══════════════════════════════════════════════════════════════════════
    驱动
    ══════════════════════════════════════════════════════════════════════ */
-const KEYS=['bevel','thickness','slope','fill','lip','caustic','edgeW','sat','absorb','env','spec','sharp','blur','dispersion','light','cssEdge'];
+const KEYS=['bevel','thickness','slope','shade','rim','edgeW','edge','blur','dispersion','light','smooth'];
 const el=id=>document.getElementById(id);
-const opts=()=>{
-  const o={shape:el('shape').value};
-  KEYS.forEach(k=>o[k]=+el(k).value);
-  return o;
-};
+const opts=()=>{ const o={}; KEYS.forEach(k=>o[k]=+el(k).value); return o; };
 
 const SAVE='hyalite_edgelab';
-function saveOpts(){
-  try{ const o={shape:el('shape').value}; KEYS.forEach(k=>o[k]=el(k).value);
-       localStorage.setItem(SAVE, JSON.stringify(o)); }catch(e){}
-}
+function saveOpts(){ try{ const o={}; KEYS.forEach(k=>o[k]=el(k).value); localStorage.setItem(SAVE, JSON.stringify(o)); }catch(e){} }
 function loadOpts(){
   try{ const raw=localStorage.getItem(SAVE); if(!raw) return false;
-       const o=JSON.parse(raw);
-       if(o.shape) el('shape').value=o.shape;
-       KEYS.forEach(k=>{ if(o[k]!=null) el(k).value=o[k]; });
-       return true; }catch(e){ return false; }
+       const o=JSON.parse(raw); KEYS.forEach(k=>{ if(o[k]!=null) el(k).value=o[k]; }); return true; }catch(e){ return false; }
 }
 function copyOpts(){
-  const o={shape:el('shape').value}; KEYS.forEach(k=>o[k]=+el(k).value);
+  const o={}; KEYS.forEach(k=>o[k]=+el(k).value);
   const t=JSON.stringify(o);
-  navigator.clipboard?.writeText(t).then(()=>{ el('note').textContent='参数已复制到剪贴板'; },
-                                         ()=>{ el('note').textContent=t; });
+  navigator.clipboard?.writeText(t).then(()=>{ el('note').textContent='参数已复制到剪贴板'; }, ()=>{ el('note').textContent=t; });
 }
 
+/* 三块矩形 + 三个圆：同一组参数，三种倒角剖面并排。示波器画最后建的那块（lip 的圆）。 */
+const SHAPES=['circle','squircle','lip'];
 function render(){
   const o=opts();
-  KEYS.forEach(k=>{const s=el('v_'+k); if(s) s.textContent=el(k).value;});
-  el('lip').parentElement.style.opacity = o.shape==='lip' ? 1 : .35;
-  if(window.Hyalite && Hyalite.supported()){
-    Hyalite.detach(el('g0'));
-    Hyalite.attach(el('g0'),{bevel:o.bevel,thickness:o.thickness,blur:o.blur,dispersion:o.dispersion,
-                             rim:.45,light:o.light,smooth:.75,materialize:0,settle:0});
-    el('g0').style.setProperty('--gl',getComputedStyle(el('g0')).getPropertyValue('--hyalite'));
-  }
-  LabGlass.attach(el('g1'),o,false);
-  LabGlass.attach(el('g2'),o,true);
-  if(window.Hyalite && Hyalite.supported()){          // 圆形一排：对她第二张的数字键盘
-    Hyalite.detach(el('d0'));
-    Hyalite.attach(el('d0'),{bevel:o.bevel,thickness:o.thickness,blur:o.blur,dispersion:o.dispersion,
-                             rim:.45,light:o.light,smooth:.75,materialize:0,settle:0});
-    el('d0').style.setProperty('--gl',getComputedStyle(el('d0')).getPropertyValue('--hyalite'));
-  }
-  LabGlass.attach(el('d1'),o,false);
-  LabGlass.attach(el('d2'),o,true);
-  drawScope(o);
+  KEYS.forEach(k=>{const t=el('v_'+k); if(t) t.textContent=el(k).value;});
+  if(!(window.Hyalite && Hyalite.supported())) return;
+  ['g0','g1','g2','d0','d1','d2'].forEach((id,i)=>{
+    Hyalite.detach(el(id));
+    Hyalite.attach(el(id), Object.assign({}, o, { shape:SHAPES[i%3], materialize:0, settle:0 },
+                                         id==='d2' ? { onBuild: drawScope } : {}));
+  });
   saveOpts();
 }
 
-/* ── 示波器：把剖面画成曲线 ＋ 一条从外到内的灰阶带 ─────────────── */
-function drawScope(o){
-  const m=LabGlass.lastMap(); if(!m) return;
+/* 示波器：位移、亮度因子、净剖面三条曲线，外加一条把净剖面铺平的灰阶带 —— 肉眼数带用。 */
+function drawScope(info){
+  if(!info || !info.profile) return;
+  const pr=info.profile, N=pr.m.length-1;
   const cv=el('curve'), g=cv.getContext('2d'), W=cv.width, H=cv.height;
-  g.clearRect(0,0,W,H); g.fillStyle='#11161d'; g.fillRect(0,0,W,H);
-  const N=m.N, X=i=>i/N*(W-2)+1;
+  g.fillStyle='#11161d'; g.fillRect(0,0,W,H);
+  const X=i=>i/N*(W-2)+1;
   g.strokeStyle='rgba(255,255,255,.13)'; g.lineWidth=1;
   for(let i=0;i<=4;i++){g.beginPath();g.moveTo(1,H*i/4);g.lineTo(W-1,H*i/4);g.stroke();}
   g.strokeStyle='rgba(255,255,255,.3)'; g.setLineDash([3,3]);
   g.beginPath();g.moveTo(1,H/2);g.lineTo(W-1,H/2);g.stroke(); g.setLineDash([]);
-  const line=(arr,f,color)=>{
-    g.strokeStyle=color; g.lineWidth=1.6; g.beginPath();
-    for(let i=0;i<=N;i++){const y=H-f(arr[i])*H; i?g.lineTo(X(i),y):g.moveTo(X(i),y);}
-    g.stroke();
-  };
-  const mx=Math.max(...Array.from(m.tab,Math.abs),1e-6);
-  line(m.tab, v=>.5+v/mx*.45, '#7fcdcd');       // 位移，中线 = 0
-  line(m.gainArr, v=>Math.min(1,v), '#ffb4a2'); // 亮度因子 1+m′，1 = 顶
-  line(m.edge, v=>.5+Math.max(-1,Math.min(1,v))*.45, '#dfc174');
-  // 灰阶带：把净剖面直接渲染成从外到内的一条边，肉眼数带
-  const sv=el('strip'), s=sv.getContext('2d'), SW=sv.width;
+  const line=(arr,f,color)=>{ g.strokeStyle=color; g.lineWidth=1.6; g.beginPath();
+    for(let i=0;i<=N;i++){const y=H-f(arr[i])*H; i?g.lineTo(X(i),y):g.moveTo(X(i),y);} g.stroke(); };
+  const mx=Math.max(...pr.m.map(Math.abs),1e-6);
+  line(pr.m,    v=>.5+v/mx*.45,                       '#7fcdcd');
+  line(pr.gain, v=>Math.min(1,v),                     '#ffb4a2');
+  line(pr.edge, v=>.5+Math.max(-1,Math.min(1,v))*.45, '#dfc174');
+  const sv=el('strip'), sc=sv.getContext('2d'), SW=sv.width;
   for(let x=0;x<SW;x++){
-    const i=Math.round(x/(SW-1)*N), e=m.edge[i], base=.42;
+    const i=Math.round(x/(SW-1)*N), e=pr.edge[i], base=.42;
     const lum = e>=0 ? base+(1-base)*Math.min(1,e) : base*Math.max(0.02,1+e);
-    s.fillStyle=`rgb(${[0,0,0].map(()=>Math.round(lum*255)).join(',')})`;
-    s.fillRect(x,0,1,sv.height);
+    const c=Math.round(lum*255);
+    sc.fillStyle='rgb('+c+','+c+','+c+')'; sc.fillRect(x,0,1,sv.height);
   }
-  const g0=m.gainArr[0], gm=Math.min(...m.gainArr);
-  el('out').textContent=`倒角 ${m.B.toFixed(0)}px · 最大位移 ${m.maxd.toFixed(1)}px · 最外沿亮度 ×${g0.toFixed(2)} · 最暗 ×${gm.toFixed(2)}`;
+  el('out').textContent='倒角 '+info.bevel+'px · 最大位移 '+info.maxDisplacement.toFixed(1)+'px · '+
+    (info.folds?'折叠（单段）':'不折叠（两段）')+' · 最暗 ×'+Math.min(...pr.gain).toFixed(2);
 }
 
 /* ── 底图 ────────────────────────────────────────────────────── */
@@ -283,23 +248,16 @@ document.querySelectorAll('.slot').forEach(s=>{
 });
 
 /* ── 启动 ────────────────────────────────────────────────────── */
-const DEF = LabGlass.DEFAULTS;
-/* 两个对照档，都不是定论：
-   glow 是我第一版的错误示范 —— 宽而糊的加性白光会把折射自己拉出来的那条彩带盖掉；
-   lens 是另一条路 —— 倒角铺满整块、当一个大透镜使，像 iOS 的 Clear 模式。 */
-const PRESETS = {
-  glow: { ...DEF, bevel: 16, thickness: 19, slope: .85, caustic: .55, edgeW: 14, sat: 1,
-          absorb: .35, env: .5, spec: .9, sharp: 26, dispersion: .6, shape: 'circle' },
-  lens: { ...DEF, fill: 1, bevel: 140, thickness: 120, slope: 2.2, blur: 0, caustic: .18,
-          edgeW: 3, sat: 1.1, absorb: .1, env: .03, spec: 1.4, sharp: 52, cssEdge: .85 },
-};
-const useP=n=>{const p=n?PRESETS[n]:DEF; KEYS.forEach(k=>el(k).value=p[k]); el('shape').value=p.shape; render();};
+const DEF = Hyalite.DEFAULTS;
+/* 一个对照档：不折叠。折叠是默认档「液态感」的来源，但它同时关掉了两段抗阶梯 ——
+   把斜率压到 1 以下，就能看到干净但没有漩涡的另一种成色。 */
+const PRESETS = { nofold: { ...DEF, slope: 0.95, blur: 1.5, dispersion: 0.8 } };
+const useP=n=>{const p=n?PRESETS[n]:DEF; KEYS.forEach(k=>{ if(p[k]!=null) el(k).value=p[k]; }); render();};
 el('reset').onclick=()=>useP(null);
-el('p_glow').onclick=()=>useP('glow');
-el('p_lens').onclick=()=>useP('lens');
+el('p_nofold').onclick=()=>useP('nofold');
 el('p_copy').onclick=copyOpts;
 el('fold').onclick=()=>el('hud').classList.toggle('fold');
-[...KEYS,'shape'].forEach(k=>el(k).addEventListener('input',render));
+KEYS.forEach(k=>el(k).addEventListener('input',render));
 if(!loadOpts()) useP(null);
 setBg(testBg(),'test');
 if(!(window.Hyalite&&Hyalite.supported()))

@@ -39,6 +39,8 @@
   <div class="glass bkt" id="bktB" style="width:304px"><h2>bucket B</h2>304 × 120 — same map</div>
   <div class="glass grow" id="grow"><h2>growing bubble</h2><span id="growText">streaming text… </span></div>
   <div class="glass big" id="big"><h2>large element</h2>the map is downsampled to ≈ 320k pixels and stretched back by feImage</div>
+  <div class="glass twin" id="noedge"><h2>edge: 0</h2>no CSS rim</div>
+  <div class="glass twin" id="fold"><h2>shipped default</h2>slope 2.7 — folds, one pass</div>
   <div class="glass bkt" id="thick" style="border-radius:60px"><h2>thick lens</h2>thickness 300 — the channel separation is capped, not scaled with the displacement</div>
 </main>
 <pre id="out">running…</pre>
@@ -53,7 +55,9 @@
   const v = (el) => el.style.getPropertyValue('--hyalite');
   const filterOf = (ref) => document.querySelector(String(ref).replace('url(', '').replace(')', ''));
   const scaleOf = (ref) => { const f = filterOf(ref), d = f && f.querySelector('feDisplacementMap'); return d ? +d.getAttribute('scale') : null; };
-  const O = { bevel: 20, thickness: 10, blur: 1, dispersion: 0.04, rim: 0.4 };
+  // A deliberately non-folding baseline (slope ≤ 1) so the two-pass cases still have something to
+  // check; the shipped default folds and is covered on its own below.
+  const O = { bevel: 20, thickness: 30, slope: 0.85, blur: 1, dispersion: 0.5, shade: 0.5, rim: 1, edgeW: 4 };
   const results = [];
   const check = (name, ok, detail) => results.push(`${ok ? '✓' : '✗'} ${name}${detail ? ' — ' + detail : ''}`);
   // info() reports the last *map* build, and most rebuilds now reuse a cached map on purpose,
@@ -136,18 +140,55 @@
           `worst jump across the axis — G ${seamG}, R ${seamR} (was ≈ 114 before the cap fix)`);
   } catch (e) { check('circle direction field has no seam on the axes', false, 'could not read the map back: ' + e.message); }
 
-  // `dispersion` is a fraction of the displacement, so a thick lens used to pull the channels tens of
-  // pixels apart and paint a radial rainbow. The separation is clamped to MAX_CA px instead.
-  Hyalite.attach($('thick'), catching('thick', { thickness: 300, bevel: 60, dispersion: 0.5 }));
+  Hyalite.attach($('fold'), catching('fold', Hyalite.DEFAULTS));
   await wait(80);
-  const kf = filterOf(v($('thick')));
-  const ks = kf ? Array.from(kf.querySelectorAll('feDisplacementMap')).map((n) => +n.getAttribute('scale')) : [];
-  const sep = ks.length >= 4 ? (ks[ks.length - 1] - ks[ks.length - 2]) / 2 : NaN;
-  // what it would have been: the outer pass carries all of the aberration, so disp is scaled up by 1/split
-  const rawSep = seen.thick && ks.length >= 4 ? ks[ks.length - 2] * Math.min(0.95, 0.5 / seen.thick.split) / 2 : NaN;
-  check('chromatic separation is capped on a thick lens', sep > 0 && sep <= 3.01,
-        `separation ${Number.isFinite(sep) ? sep.toFixed(2) : '—'}px of a ${seen.thick ? seen.thick.maxDisplacement.toFixed(0) : '?'}px displacement ` +
-        `(cap 3; unclamped ${Number.isFinite(rawSep) ? rawSep.toFixed(1) : '?'}px)`);
+
+  // Dispersion is a fixed pixel count, not a share of the displacement: doubling the thickness must
+  // not touch it. Before 0.4.0 it scaled with the lens and a thick one painted a radial rainbow.
+  const sepOf = (el) => {
+    const f = filterOf(v(el)), d = f ? Array.from(f.querySelectorAll('feDisplacementMap')).map((n) => +n.getAttribute('scale')) : [];
+    return d.length >= 3 ? (d[d.length - 1] - d[d.length - 2]) / 2 : NaN;
+  };
+  Hyalite.attach($('thick'), catching('thick', { thickness: 300, bevel: 60, dispersion: 2 }));
+  await wait(80);
+  const sepThick = sepOf($('thick')), sepThin = sepOf($('circle'));
+  check('dispersion is a fixed pixel count, not a share of the displacement',
+        Math.abs(sepThick - 2) < 0.02 && Math.abs(sepThin - O.dispersion) < 0.02,
+        `${seen.thick ? seen.thick.maxDisplacement.toFixed(0) : '?'}px lens separates by ${sepThick.toFixed(2)}px, ` +
+        `${seen.circle ? seen.circle.maxDisplacement.toFixed(0) : '?'}px lens by ${sepThin.toFixed(2)}px`);
+
+  // The shade is an edge effect: the map's blue channel sits at neutral in the centre and only drops
+  // near the rim. (128 = neutral, below = multiply down, above = add light.)
+  let bMid = -1, bMin = 999, bMax = -1;
+  try {
+    const im = new Image(); im.src = seen.circle.map; await im.decode();
+    const cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height;
+    const c2 = cv.getContext('2d', { willReadFrequently: true });
+    c2.drawImage(im, 0, 0);
+    const P = c2.getImageData(0, 0, im.width, im.height).data;
+    const at = (x, y) => P[(y * im.width + x) * 4 + 2];
+    bMid = at(im.width >> 1, im.height >> 1);
+    for (let x = 0; x < im.width; x++) { const b = at(x, im.height >> 1); bMin = Math.min(bMin, b); bMax = Math.max(bMax, b); }
+    check('the shade lives on the edge, the centre stays neutral', bMid === 128 && bMin < 124,
+          `centre ${bMid} · darkest ${bMin} · brightest ${bMax} (128 = untouched)`);
+  } catch (e) { check('the shade lives on the edge, the centre stays neutral', false, 'could not read the map back: ' + e.message); }
+
+  /* Both signs are present in the profile itself. Read there rather than off the map: the specular
+     line is exp 44, so it peaks within the outermost fraction of a pixel and the map's first pixel
+     centre already misses it — inside the filter `rim` is the wide Fresnel sheen, and the pixel-sharp
+     line is the CSS one. */
+  const dp = seen.fold && seen.fold.profile.edge;
+  check('the profile carries light and shade, in that order outward',
+        !!dp && Math.max(...dp) > 0 && Math.min(...dp) < 0 && dp[0] > dp[Math.round(dp.length / 4)],
+        dp ? `outermost ${dp[0].toFixed(2)} · darkest ${Math.min(...dp).toFixed(2)} · brightest ${Math.max(...dp).toFixed(2)}` : 'no build');
+
+  // The sharp outer line is CSS, so it is written to its own variable and survives detach
+  const edgeVar = $('circle').style.getPropertyValue('--hyalite-edge');
+  Hyalite.attach($('noedge'), Object.assign({}, O, { edge: 0 }));
+  await wait(60);
+  check('--hyalite-edge carries the CSS rim, and edge:0 turns it off',
+        /inset/.test(edgeVar) && $('noedge').style.getPropertyValue('--hyalite-edge') === 'none',
+        `${(edgeVar.split(',')[0] || '—').trim()} … · edge:0 → ${$('noedge').style.getPropertyValue('--hyalite-edge')}`);
 
   // settle: while growing → plain blur; after 120 ms of quiet → url again
   Hyalite.attach($('grow'), O); await wait(60);
@@ -159,24 +200,32 @@
 
   // clamps — read the values back rather than trusting that nothing threw
   const probe = document.body.appendChild(Object.assign(document.createElement('div'), { className: 'glass twin' }));
-  Hyalite.attach(probe, { bevel: -5, thickness: 10, blur: 999, dispersion: 9, rim: -1, light: 999, smooth: 0, onBuild: (i) => { seen.probe = i; } });
+  Hyalite.attach(probe, { bevel: -5, thickness: 10, slope: 0.85, blur: 999, dispersion: 99, rim: -1, shade: 0.5, light: 999, smooth: 0, onBuild: (i) => { seen.probe = i; } });
   await wait(60);
   const pf = filterOf(v(probe));
   const pb = pf && pf.querySelector('feGaussianBlur');
   const ps = pf ? Array.from(pf.querySelectorAll('feDisplacementMap')).map((n) => +n.getAttribute('scale')) : [];
   check('bevel −5 clamps to 1', seen.probe && seen.probe.bevel === 1, seen.probe && `bevel ${seen.probe.bevel}px`);
   check('blur 999 clamps to 64', pb && +pb.getAttribute('stdDeviation') === 64, pb && `stdDeviation ${pb.getAttribute('stdDeviation')}`);
-  check('dispersion 9 clamps to 0.5', ps.length === 3 && Math.abs(ps[2] / ps[1] - 1.5) < 0.01, `scales ${ps.join(' / ') || '—'}`);
-  check('rim −1 clamps to 0 (pass dropped)', !!pf && !pf.querySelector('feFuncA'), pf ? 'no feFuncA' : 'no filter');
+  check('dispersion 99 clamps to 8px of separation', ps.length === 3 && Math.abs((ps[2] - ps[1]) / 2 - 8) < 0.02, `separation ${ps.length === 3 ? ((ps[2] - ps[1]) / 2).toFixed(2) : '—'}px`);
+  check('rim −1 clamps to 0 (no light in the profile)', !!seen.probe && seen.probe.profile.edge.every((e) => e <= 1e-9), seen.probe ? `max edge ${Math.max(...seen.probe.profile.edge).toFixed(3)} (≤ 0 = shade only)` : 'no build');
   check('smooth 0 is one pass', !!pf && pf.querySelectorAll('feImage').length === 1 && ps.length === 3, pf && `${pf.querySelectorAll('feImage').length} feImage · ${ps.length} feDisplacementMap`);
 
-  // rule 4: the default filter is two passes — inner map + ring blur, then the outer pass per channel —
-  // and the two tables compose back to the one-pass field: inner(x + split·m(x)) + split·m(x) = m(x).
+  /* Rule 4: where the field does not fold it is split into two displacement passes whose tables
+     compose back to the one-pass field — inner(x + split·m(x)) + split·m(x) = m(x). Once it folds
+     there is no such split, so the shipped default (slope 2.7) is deliberately a single pass. */
   const tf = filterOf(v($('circle')));
   const tImgs = tf ? tf.querySelectorAll('feImage').length : 0;
   const tDisp = tf ? Array.from(tf.querySelectorAll('feDisplacementMap')).map((n) => +n.getAttribute('scale')) : [];
-  check('default filter is two passes', tImgs === 2 && tDisp.length === 4 && tf.querySelectorAll('feGaussianBlur').length === 2,
+  check('a non-folding field gets two passes', tImgs === 2 && tDisp.length === 4 && tf.querySelectorAll('feGaussianBlur').length === 2,
         `${tImgs} feImage · ${tDisp.length} feDisplacementMap · ${tf ? tf.querySelectorAll('feGaussianBlur').length : 0} feGaussianBlur`);
+
+  const ff = filterOf(v($('fold')));
+  check('the shipped default folds, so it stays one pass',
+        !!seen.fold && seen.fold.folds === true && seen.fold.twoPass === false &&
+        !!ff && ff.querySelectorAll('feImage').length === 1,
+        seen.fold ? `slope ${Hyalite.DEFAULTS.slope} folds · ${ff ? ff.querySelectorAll('feImage').length : '?'} feImage` : 'no build');
+
   let worstSum = 0;
   try {
     const rd = async (src) => { const im = new Image(); im.src = src; await im.decode(); const cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height;
@@ -185,7 +234,6 @@
     const maxd = seen.circle.maxDisplacement, split = seen.circle.split;
     const ymid = Math.floor(outer.h / 2);                       // a horizontal line through the middle: the field is 1-D there
     const off = (im, x, sc) => ((im.P[(ymid * im.w + x) * 4] - 128) / 127) * sc;
-    const maxd1 = off(inner, 0, 1) * 0 + Math.max(...Array.from({ length: inner.w }, (_, x) => Math.abs(off(inner, x, 1))));   // inner table is normalised to its own max
     const innerMax = tDisp[0] / 2;
     for (let x = 0; x < Math.floor(outer.w / 2); x++) {
       const m = off(outer, x, maxd), m2 = split * m;             // outer pass moves the sample by m2 (inward = +x)
@@ -194,7 +242,7 @@
       const m1 = off(inner, xi, innerMax) * (1 - u) + off(inner, Math.min(inner.w - 1, xi + 1), innerMax) * u;
       worstSum = Math.max(worstSum, Math.abs(m1 + m2 - m));
     }
-    check('inner ∘ outer equals the one-pass field', worstSum < 0.6, `worst |inner + outer − m| ${worstSum.toFixed(2)}px of ${maxd.toFixed(1)}px · split ${split.toFixed(2)} · maxd1 sanity ${maxd1.toFixed(2)}`);
+    check('inner ∘ outer equals the one-pass field', worstSum < 0.6, `worst |inner + outer − m| ${worstSum.toFixed(2)}px of ${maxd.toFixed(1)}px · split ${split.toFixed(2)}`);
   } catch (e) { check('inner ∘ outer equals the one-pass field', false, 'could not read the maps back: ' + e.message); }
 
   // escape hatch for the day WebKit ships backdrop filters

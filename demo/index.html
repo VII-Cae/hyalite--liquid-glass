@@ -35,10 +35,13 @@
     border:1px solid rgba(255,255,255,.10);
     box-shadow:0 16px 42px rgba(0,0,0,.36), inset 0 .5px 0 rgba(255,255,255,.42), inset 0 -.5px 0 rgba(255,255,255,.14),
                inset 3px 0 9px -6px rgba(255,255,255,.42), inset -3px 0 9px -6px rgba(255,255,255,.42);
-    /* the engine writes --hyalite; everything else falls back to a plain blur */
-    backdrop-filter:var(--hyalite, blur(3px));-webkit-backdrop-filter:var(--hyalite, blur(3px));
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
   }
-  .glass.plain{backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+  /* B: the engine writes --hyalite (the filter) and --hyalite-edge (the sharp rim, as inset shadows), so this card
+     drops the hand-drawn highlights A uses — the rim is computed from the geometry, not painted on. */
+  .glass.lens{border-color:transparent;
+    box-shadow:var(--hyalite-edge,none), 0 16px 42px rgba(0,0,0,.36);
+    backdrop-filter:var(--hyalite, blur(3px));-webkit-backdrop-filter:var(--hyalite, blur(3px))}
   .glass h3{margin:0 0 4px;font-size:18px;font-weight:600}
   .glass p{margin:0 0 14px;font-size:12.5px;opacity:.78}
   .row{display:flex;gap:8px}
@@ -52,8 +55,9 @@
   .hud label{display:grid;grid-template-columns:82px 130px 52px;align-items:center;gap:8px}
   .hud input[type=range]{width:130px;accent-color:#dfc174}
   .hud .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
-  .hud button,.hud .file{font:inherit;padding:5px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.10);color:inherit;cursor:pointer}
-  .hud button:hover,.hud .file:hover{background:rgba(255,255,255,.18)}
+  .hud a.btn{text-decoration:none;display:inline-block}
+  .hud button,.hud .file,.hud a.btn{font:inherit;padding:5px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.10);color:inherit;cursor:pointer}
+  .hud button:hover,.hud .file:hover,.hud a.btn:hover{background:rgba(255,255,255,.18)}
   .hud .hint{opacity:.6}
   .hud .warn{color:#ffb4a2}
   .hud input[type=file]{display:none}
@@ -86,16 +90,18 @@
 
 <div class="hud">
   <h1>hyalite · playground</h1>
-  <label>bevel <input id="bevel" type="range" min="4" max="48" value="28" step="1"><b id="bevelV"></b></label>
-  <label>thickness <input id="thickness" type="range" min="2" max="40" value="19" step="1"><b id="thicknessV"></b></label>
+  <label>bevel <input id="bevel" type="range" min="4" max="140" value="41" step="1"><b id="bevelV"></b></label>
+  <label>thickness <input id="thickness" type="range" min="2" max="220" value="96" step="1"><b id="thicknessV"></b></label>
+  <label>slope <input id="slope" type="range" min="0.3" max="3" value="2.7" step="0.05"><b id="slopeV"></b></label>
+  <label>edge shade <input id="shade" type="range" min="0" max="1" value="0.62" step="0.02"><b id="shadeV"></b></label>
+  <label>edge width <input id="edgeW" type="range" min="0.5" max="24" value="6.5" step="0.5"><b id="edgeWV"></b></label>
+  <label>rim light <input id="rim" type="range" min="0" max="2" value="1.76" step="0.02"><b id="rimV"></b></label>
   <label>blur <input id="blur" type="range" min="0" max="12" value="1" step="0.5"><b id="blurV"></b></label>
-  <label>dispersion <input id="dispersion" type="range" min="0" max="0.16" value="0.11" step="0.01"><b id="dispersionV"></b></label>
-  <label>rim light <input id="rim" type="range" min="0" max="1.6" value="0.3" step="0.05"><b id="rimV"></b></label>
-  <label>light dir <input id="light" type="range" min="-180" max="180" value="-25" step="5"><b id="lightV"></b></label>
-  <label>smooth <input id="smooth" type="range" min="0" max="3" value="0.75" step="0.25"><b id="smoothV"></b></label>
+  <label>dispersion <input id="dispersion" type="range" min="0" max="3" value="1.6" step="0.05"><b id="dispersionV"></b></label>
+  <label>light dir <input id="light" type="range" min="-180" max="180" value="-140" step="5"><b id="lightV"></b></label>
   <div class="hint" id="readout"></div>
   <div class="btns">
-    <button id="swap">swap</button><button id="mat">materialize</button><button id="grid">grid</button>
+    <button id="swap">swap</button><button id="mat2">materialize</button><a class="btn" href="edge-lab.html">profile lab →</a><button id="grid">grid</button>
     <label class="file">load image<input id="file" type="file" accept="image/*"></label>
     <button id="reset">reset</button>
   </div>
@@ -108,22 +114,38 @@
   const $ = (s) => document.querySelector(s);
   const lens = $('#lens');
   const q = new URLSearchParams(location.search);
-  // the playground's own defaults, tuned by eye by VII-Cae on 2026-09-07 — the engine's DEFAULTS are more conservative
-  const P = { bevel: 28, thickness: 19, blur: 1, dispersion: 0.11, rim: 0.3, light: -25, smooth: 0.75 };
-  const FMT = { bevel: v => v + 'px', thickness: v => v + 'px', blur: v => v + 'px', dispersion: v => v.toFixed(2), rim: v => v.toFixed(2), light: v => v + '°', smooth: v => v ? v + 'px' : 'off' };
-  const readout = (info) => { if (info) $('#readout').textContent = `max edge offset ≈ ${info.maxDisplacement.toFixed(1)}px · bevel ${info.bevel}px · map ${info.mapSize.join('×')}`; };
+  // Nine knobs — the ones that move the look most. Everything else (shape, the CSS rim strength,
+  // smooth, settle) rides along from the engine's own defaults, which are the set VII-Cae tuned by
+  // eye on 2026-09-10 and are what the README card shows.
+  const D = Hyalite.DEFAULTS;
+  const KEYS = ['bevel', 'thickness', 'slope', 'shade', 'edgeW', 'rim', 'blur', 'dispersion', 'light'];
+  const FMT = {
+    bevel: (v) => v + 'px', thickness: (v) => v + 'px', slope: (v) => v.toFixed(2) + ' px/px',
+    shade: (v) => v.toFixed(2), edgeW: (v) => v + 'px', rim: (v) => v.toFixed(2),
+    blur: (v) => v + 'px', dispersion: (v) => v.toFixed(2) + 'px', light: (v) => v + '\u00b0',
+  };
+  const P = Object.assign({}, D);
 
   if (q.get('bg') === 'grid') document.body.classList.add('grid');
-  for (const k in P) {
+  for (const k of KEYS) {
     const el = $('#' + k);
     if (q.has(k)) el.value = q.get(k);
     P[k] = +el.value; $('#' + k + 'V').textContent = FMT[k](P[k]);
-    el.addEventListener('input', () => { P[k] = +el.value; $('#' + k + 'V').textContent = FMT[k](P[k]); Hyalite.setOpts({ [k]: P[k] }).then(() => readout(Hyalite.info())); });
+    el.addEventListener('input', () => { P[k] = +el.value; $('#' + k + 'V').textContent = FMT[k](P[k]); schedule(); });
   }
-  $('#sup').textContent = Hyalite.supported() ? `refraction on · ${(navigator.userAgent.match(/(Chrome|Edg|Safari|Firefox)\/[\d.]+/) || ['?'])[0]}` : 'this browser cannot run SVG backdrop filters — B is showing the plain-blur fallback';
-  if (!Hyalite.supported()) $('#sup').classList.add('warn');
 
-  Hyalite.attach(lens, Object.assign({ onBuild: readout }, P));
+  // Every knob rebuilds the map (a canvas pass over the card), so coalesce a drag into one frame.
+  const readout = (i) => { if (i) $('#readout').textContent =
+    `max edge offset \u2248 ${i.maxDisplacement.toFixed(1)}px \u00b7 bevel ${i.bevel}px \u00b7 ` +
+    `${i.folds ? 'folds (one pass)' : 'no fold (two passes)'}`; };
+  const schedule = () => Hyalite.setOpts(P).then(() => readout(Hyalite.info()));
+
+  const ok = window.Hyalite && Hyalite.supported();
+  $('#sup').textContent = ok
+    ? `refraction on \u00b7 ${(navigator.userAgent.match(/(Chrome|Edg|Safari|Firefox)\/[\d.]+/) || ['?'])[0]}`
+    : 'this browser cannot run SVG backdrop filters \u2014 B is showing the plain-blur fallback';
+  if (!ok) $('#sup').classList.add('warn');
+  if (ok) Hyalite.attach(lens, Object.assign({ onBuild: readout }, P));
 
   // drag
   for (const slot of document.querySelectorAll('.slot')) {
@@ -137,8 +159,6 @@
     const a = $('#slotA'), b = $('#slotB'), ra = [a.offsetLeft, a.offsetTop], rb = [b.offsetLeft, b.offsetTop];
     a.style.left = rb[0] + 'px'; a.style.top = rb[1] + 'px'; b.style.left = ra[0] + 'px'; b.style.top = ra[1] + 'px';
   });
-  // materialize: detach, then re-attach with a ramp
-  $('#mat').addEventListener('click', () => { Hyalite.detach(lens); Hyalite.attach(lens, Object.assign({ onBuild: readout, materialize: 520 }, P)); });
   $('#grid').addEventListener('click', () => { document.body.classList.toggle('grid'); document.body.classList.remove('photo'); });
   $('#file').addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0]; if (!f) return;
@@ -146,6 +166,7 @@
     document.body.classList.remove('grid'); document.body.classList.add('photo');
   });
   $('#reset').addEventListener('click', () => location.href = location.pathname);
+  $('#mat2') && $('#mat2').addEventListener('click', () => { Hyalite.detach(lens); Hyalite.attach(lens, Object.assign({ onBuild: readout, materialize: 520 }, P)); });
 })();
 </script>
 </body></html>

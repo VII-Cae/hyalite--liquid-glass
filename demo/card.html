@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <title>hyalite · card</title>
-<script src="../hyalite.js"></script>   <!-- only for supported() -->
-<script src="lab-engine.js"></script>
+<script src="../hyalite.js"></script>
 <style>
   /* Fixed 1280×640 — GitHub's social-preview aspect, and wide enough that the README shows it
      at full width. Shot at deviceScaleFactor 1.5 → 1920×960, which stays under GitHub's 1 MB
@@ -28,8 +27,8 @@
          box-sizing:border-box;width:944px;height:296px;border-radius:60px;
          background:rgba(0,0,0,.10);
          padding:44px 52px;
-         backdrop-filter:var(--gl, blur(4px));-webkit-backdrop-filter:var(--gl, blur(4px));
-         box-shadow:var(--edge,none), 0 30px 64px rgba(0,0,0,.42)}
+         backdrop-filter:var(--hyalite, blur(4px));-webkit-backdrop-filter:var(--hyalite, blur(4px));
+         box-shadow:var(--hyalite-edge,none), 0 30px 64px rgba(0,0,0,.42)}
   .glass h2{margin:0 0 14px;font:600 40px/1.1 system-ui,-apple-system,"Helvetica Neue",sans-serif;
             letter-spacing:-.02em;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.45)}
   .glass p{margin:0;max-width:660px;font:400 25px/1.42 system-ui,-apple-system,sans-serif;
@@ -46,13 +45,13 @@
 </div>
 <script>
 (() => {
-  if (!window.Hyalite || !Hyalite.supported()) {
+  if (!Hyalite.supported()) {
     document.body.insertAdjacentHTML('afterbegin',
       '<div class="warn">NOT SUPPORTED HERE — this card would ship a plain blur</div>');
     window.__cardReady = 'unsupported';
     return;
   }
-  LabGlass.attach(document.getElementById('glass'), LabGlass.DEFAULTS, true);
+  Hyalite.attach(document.getElementById('glass'), {});   // the shipped defaults, verbatim
   requestAnimationFrame(() => requestAnimationFrame(() => { window.__cardReady = 'ok'; }));
 })();
 </script>

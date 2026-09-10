@@ -2,7 +2,7 @@
 
 Real refraction “liquid glass” for the web. One file, no WebGL, no build step.
 
-Hyalite treats an element as a slab of glass with a rounded bevel. For the element’s exact size and corner radii it computes a lens map, feeds it to an SVG filter, and lets the browser bend whatever is *behind* the element through `backdrop-filter: url(#…)`. The centre stays clear; the edge pulls the world inward the way a thick piece of glass does. Straight lines curve, not smear.
+Hyalite treats an element as a slab of glass with a bevelled edge. For the element’s exact size and corner radii it computes a lens map, feeds it to an SVG filter, and lets the browser bend whatever is *behind* the element through `backdrop-filter: url(#…)`. The centre stays clear; the edge pulls the world inward the way a thick piece of glass does, darkens where it magnifies, and catches a line of light along the rim. Straight lines curve, not smear.
 
 > Named after hyalite, the water-clear glassy opal. It also sounds like *highlight*, which is what the edge is about.
 
@@ -10,12 +10,12 @@ Hyalite treats an element as a slab of glass with a rounded bevel. For the eleme
 
 ![A glass card over a grid and a big word: outside the card the ruling stays straight, under its edge it curves.](demo/shots/card.jpg)
 
-<sub>Rendered with the 0.4.0 experiment in <code>demo/lab-engine.js</code>: 0.3.1 does the refraction, not yet the edge shading. <a href="demo/card.html">Source of the card</a>.</sub>
+<sub>The shipped defaults, straight out of <a href="demo/card.html"><code>demo/card.html</code></a>.</sub>
 
 - [`demo/index.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) — plain blur vs hyalite on the same background: drag, swap, tune bevel / thickness / blur / dispersion / rim, switch to a grid or load your own photo.
 
   ![The lens on a grid: the field fans into the corners, nothing folds, nothing creases.](demo/shots/playground-grid.jpg)
-- [`demo/cases.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) — self-checking page: asymmetric, elliptical and overlap-rule radii, twins sharing a filter, size buckets, quarter-symmetry read back out of the map, a seam-free direction field on a circle, a capped chromatic separation on a thick lens, a streaming bubble, clamps read back rather than assumed.
+- [`demo/cases.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) — self-checking page: asymmetric, elliptical and overlap-rule radii, twins sharing a filter, size buckets, quarter-symmetry read back out of the map, a seam-free direction field on a circle, a dispersion that does not scale with the lens, the shade read out of the map's blue channel, the folding default staying one pass, a streaming bubble, clamps read back rather than assumed.
 - [`demo/run-cases.mjs`](https://github.com/VII-Cae/hyalite--liquid-glass/blob/main/demo/run-cases.mjs) — not a page to open: a command-line script that runs `cases.html` in a real headless Chromium and prints red/green with an exit code. `npm test`, or `node demo/run-cases.mjs` (Node 22+, no dependencies). Real time on purpose — `--virtual-time-budget` fast-forwards timers without promising frames, and two cases wait on a `requestAnimationFrame` ramp and a `ResizeObserver`, so under virtual time they report false failures.
 
 ## Use
@@ -29,6 +29,8 @@ Hyalite treats an element as a slab of glass with a rounded bevel. For the eleme
   /* Hyalite writes --hyalite on each attached element; every other browser keeps the fallback */
   backdrop-filter: var(--hyalite, blur(6px));
   -webkit-backdrop-filter: var(--hyalite, blur(6px));
+  /* and --hyalite-edge: the sharp rim, as inset shadows. This one works everywhere */
+  box-shadow: var(--hyalite-edge, none);
   /* colour the glass *above* the refraction, never inside it */
   background: rgba(0, 0, 0, .13);
   border-radius: 24px;
@@ -37,11 +39,11 @@ Hyalite treats an element as a slab of glass with a rounded bevel. For the eleme
 
 ```js
 // every .glass inside #app, now and later; resized ones are rebuilt; several watchers can coexist
-const chat = Hyalite.watch(document.getElementById('app'), '.glass', { bevel: 16, thickness: 10, blur: 3 });
+const chat = Hyalite.watch(document.getElementById('app'), '.glass');   // the defaults
 chat.stop();
 
-// or one element at a time
-Hyalite.attach(card, { bevel: 24, thickness: 10, blur: 0.5, materialize: 220 });
+// or one element at a time, tuned
+Hyalite.attach(card, { bevel: 24, thickness: 40, slope: 0.9, materialize: 220 });
 Hyalite.refresh(card);   // after a border-radius change that did not change the size
 Hyalite.detach(card);
 ```
@@ -66,17 +68,28 @@ All numeric options are clamped to sane ranges.
 
 | option | default | meaning |
 |---|---|---|
-| `bevel` | 16 | width of the bent zone along the edge, px. Clamped to the largest corner radius (see [Corners](#corners)) |
-| `thickness` | 10 | glass thickness, px. Drives how far the edge pulls the backdrop inward |
-| `blur` | 3 | frost in the centre, px |
-| `dispersion` | 0.05 | chromatic aberration, 0–0.5. `0` is a single displacement pass and noticeably cheaper. It is a *fraction of the displacement*, so the separation it produces is clamped to 3 px: a very thick lens gets a coloured edge rather than a radial rainbow |
-| `rim` | 0.45 | geometry-aware edge light, 0–4. `0` turns it off |
-| `light` | −145 | direction the rim light comes from, degrees. `0` is straight above, positive turns clockwise. The default sits low on the left, against the drop shadow, which reads as floating rather than ceiling-lit — chosen by eye |
-| `smooth` | 1 | px. Blur that hides Chromium’s nearest-neighbour staircase along the rim (see [No stairs](#how-it-works)). It is applied *between* the two displacement passes and only inside the bevel ring; the centre never sees it. `0` goes back to a single pass — cheaper, and the stairs come back |
-| `materialize` | 0 | ms. On attach, ramp displacement and rim light from zero. Apple’s glass does not fade in; its lensing ramps up |
-| `settle` | 120 | ms. While an element keeps resizing it shows a plain blur of the same radius; `settle` ms after the last change the map is rebuilt once and the refraction ramps back in. `0` = live mode: throttled rebuilds with the old map stretched meanwhile |
+| `bevel` | 41 | width of the bent zone along the edge, px. Clamped to **half the short side** — no longer to the corner radius, so a circle can bend all the way to its centre |
+| `thickness` | 96 | glass thickness, px. Drives how far the edge pulls the backdrop inward |
+| `slope` | 2.7 | cap on how fast the displacement decays, px/px. At 1 the sampling point stands still; **above it the field folds** — the same backdrop shows up twice, which is where the liquid swirls come from. Folding also rules out the two-pass anti-staircase (see `smooth`) |
+| `shape` | `squircle` | the bevel's cross-section: `circle`, `squircle` or `lip`. squircle meets the slab more gently than a quarter circle; lip is raised at the rim and dipped behind it, which reverses the tilt in the middle and adds a second pair of light/dark bands |
+| `blur` | 1 | frost in the centre, px |
+| `dispersion` | 1.6 | chromatic aberration in **pixels of channel separation** — a material constant of the glass, unrelated to how strong the lens is. `0` is a single pass and noticeably cheaper |
+| `shade` | 0.62 | how much the edge darkens, 0–2. Two things at once in the ratio they were tuned: the caustic (the edge magnifies the backdrop, so its energy is spread thin) and the Fresnel transmission loss |
+| `rim` | 1.76 | how much light the edge sends back, 0–4: a wide Fresnel sheen plus a tight specular line. This is *inside* the filter — for the pixel-sharp outer line see `edge` |
+| `edgeW` | 6.5 | px — how far in the shading and the sheen reach. Absolute on purpose (see [rule 3](#how-it-works)) |
+| `edge` | 0.32 | strength of the CSS rim written to `--hyalite-edge`, 0–2. Inset shadows on the element itself, so they stay crisp where a filter-drawn line would not — and they show up in Safari and Firefox too. `0` writes `none` |
+| `light` | −140 | direction the light comes from, degrees. `0` is straight above, positive turns clockwise |
+| `smooth` | 1 | px. Blur that hides Chromium's nearest-neighbour staircase along the rim (see [No stairs](#how-it-works)). Applied *between* the two displacement passes and only inside the bevel ring. **Ignored when the field folds** (`slope` > 1), where no such split exists |
+| `materialize` | 0 | ms. On attach, ramp displacement, shade and rim from zero. Apple's glass does not fade in; its lensing ramps up |
+| `settle` | 120 | ms. While an element keeps resizing it shows a plain blur of the same radius; `settle` ms after the last change the map is rebuilt once and the refraction ramps back in. `0` = live mode |
 | `self` | false | the element filters *itself* (`filter: var(--hyalite)`) instead of its backdrop. Displacement only — see [Gotchas](#gotchas) |
-| `onBuild(info)` | — | called after every *map* build — a filter rebuilt from a cached map does not build one |
+| `onBuild(info)` | — | called after every *map* build — a filter rebuilt from a cached map does not build one. `info` carries the geometry, both map URLs and the sampled edge profile |
+
+The defaults are a set tuned by eye, not a neutral starting point: a narrow bevel over a very thick
+slab with a folding slope. That keeps the centre clear while the edge concentrates the backdrop into
+a coloured band, and confines the folding to a rim narrow enough that `blur` and `dispersion` cover
+its staircase. For something calmer, drop `slope` below 1 — you lose the swirls and get the two-pass
+anti-staircase back.
 
 ### Caching, in two levels
 
@@ -88,7 +101,7 @@ The materialize ramp runs on a private clone of the shared filter, so animating 
 
 ### Corners
 
-Per-corner *circular* radii are exact: each corner uses its own radius in the distance field. The bevel is clamped to the **largest** corner, on purpose — a chat bubble with a 6px tail would otherwise lose its refraction along every edge. Near a corner smaller than the bevel the depth field kinks on the medial axis, but the direction field is taken from a larger rectangle, so the kink is faint. Radii follow the CSS overlap rule: they are shrunk by one *shared* factor, and only when two radii sharing an edge do not fit on it — never clamped corner by corner. That distinction is visible: a 320×40 card with `border-radius: 24px 24px 0 0` really gets 24px corners, and a per-corner clamp to half the short side would draw the refraction at 20 while the browser drew the glass at 24. A radius past half the short side is honoured near the edge, where the bevel lives; deeper in, the quadrant SDF is an approximation. Elliptical radii (`40px / 16px`) are approximated by their horizontal value; percentage radii resolve against the shorter side.
+Per-corner *circular* radii are exact: each corner uses its own radius in the distance field. The bevel is no longer clamped to the corner radius, only to half the short side: Apple's glass is a lens across the whole element — a circular key bends all the way to its centre — and a bevel locked to the radius can never get there. Near a corner smaller than the bevel the depth field kinks on the medial axis, but the direction field is taken from a larger rectangle, so the kink is faint. Radii follow the CSS overlap rule: they are shrunk by one *shared* factor, and only when two radii sharing an edge do not fit on it — never clamped corner by corner. That distinction is visible: a 320×40 card with `border-radius: 24px 24px 0 0` really gets 24px corners, and a per-corner clamp to half the short side would draw the refraction at 20 while the browser drew the glass at 24. A radius past half the short side is honoured near the edge, where the bevel lives; deeper in, the quadrant SDF is an approximation. Elliptical radii (`40px / 16px`) are approximated by their horizontal value; percentage radii resolve against the shorter side.
 
 Rule 3 widens the radii to smooth the direction field, and **that widened radius is capped at half the short side** — past it the rounded-rect distance function stops holding (`W/2 − R` goes negative, both `q` terms are positive everywhere, and the field degenerates into a shifted circle), so the gradient flips sign across the axes. A circle sits exactly at the limit, so before 0.3.1 any bevel at all pushed it over and it came out with a cross-shaped seam. Circles and pills are fine now.
 
@@ -136,6 +149,6 @@ Tested September 2026.
 
 Apple’s Liquid Glass (WWDC25) for the idea that glass should *bend* light rather than scatter it. Rounded-rect SDF → refraction → displacement map → `feDisplacementMap` is a route several projects have taken; [kube.io](https://kube.io/blog/liquid-glass-css-svg/) has the clearest physics write-up. Hyalite’s implementation-specific choices are the no-fold constraint, the larger-radius direction field, per-corner radii, maps built for the real element size, the settle/materialize behaviour, the private ramp clone, and a small watch/attach API that survives real pages.
 
-Engineering by Claude Fable 5.1 (0.1.0, and 0.3.0: the two-pass split that hides Chromium’s nearest-neighbour staircase, `smooth`) and Claude Opus 5 (0.2.0: the two-level cache and size buckets, the CSS overlap rule for radii, quarter-symmetry, `light`, `force`, and a self-check page that reads values back instead of trusting that nothing threw; 0.3.1: the direction-field cap that unbroke circles, and the clamp that keeps a thick lens from turning into a rainbow) — both Anthropic, both pair-programmed with VII-Cae, who set the direction, tested every build by eye and tuned every parameter.
+Engineering by Claude Fable 5.1 (0.1.0, and 0.3.0: the two-pass split that hides Chromium’s nearest-neighbour staircase, `smooth`) and Claude Opus 5 (0.2.0: the two-level cache and size buckets, the CSS overlap rule for radii, quarter-symmetry, `light`, `force`, and a self-check page that reads values back instead of trusting that nothing threw; 0.3.1: the direction-field cap that unbroke circles; 0.4.0: the shaded edge — the signed profile in the map's blue channel and the multiply pass that applies it — the selectable bevel profiles, the optional fold, the CSS rim, and the split between what scales and what does not) — both Anthropic, both pair-programmed with VII-Cae, who set the direction, tested every build by eye and tuned every parameter.
 
 MIT © 2026 VII-Cae

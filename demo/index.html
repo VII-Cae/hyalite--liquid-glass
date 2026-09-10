@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>hyalite · playground</title>
-<script src="hyalite-0.3.1.js"></script>   <!-- the A card: the previous engine, frozen -->
-<script src="../hyalite.js"></script>      <!-- the B card: the current one -->
+<script src="legacy/hyalite-0.1.0.js"></script>
+<script src="legacy/hyalite-0.2.0.js"></script>
+<script src="legacy/hyalite-0.3.1.js"></script>
+<script src="../hyalite.js"></script>
 <style>
   html,body{margin:0;height:100%;overflow:hidden}
   body{
@@ -25,7 +27,7 @@
   body.grid .big{color:rgba(255,255,255,.35)}
 
   /* ── the glass ─────────────────────────────────────────── */
-  .slot{position:absolute;width:380px;touch-action:none;cursor:grab;user-select:none}
+  .slot{position:absolute;width:340px;touch-action:none;cursor:grab;user-select:none}
   .slot.dragging{cursor:grabbing}
   .slot .label{position:absolute;left:0;right:0;top:100%;margin-top:10px;text-align:center;font:12px/1.4 ui-monospace,Menlo,monospace;
                color:rgba(255,255,255,.78);text-shadow:0 1px 4px rgba(0,0,0,.8)}
@@ -35,12 +37,15 @@
     background:rgba(0,0,0,.13);
     box-shadow:0 16px 42px rgba(0,0,0,.36);
   }
-  /* A: 0.3.1 — real refraction, but the edge only bends. Its rim light was an additive white pass
-     painted inside the filter, so it keeps the hand-drawn inset highlights that version relied on. */
-  .glass.prev{border:1px solid rgba(255,255,255,.10);
+  /* 0.1.0 – 0.3.1 painted their rim light inside the filter as an additive white pass, so they all
+     lean on the hand-drawn inset highlights those versions shipped with. Each reads its own variable
+     so four engines can render on one page. */
+  .glass.old{border:1px solid rgba(255,255,255,.10);
     box-shadow:0 16px 42px rgba(0,0,0,.36), inset 0 .5px 0 rgba(255,255,255,.42), inset 0 -.5px 0 rgba(255,255,255,.14),
-               inset 3px 0 9px -6px rgba(255,255,255,.42), inset -3px 0 9px -6px rgba(255,255,255,.42);
-    backdrop-filter:var(--hyalite-legacy, blur(3px));-webkit-backdrop-filter:var(--hyalite-legacy, blur(3px))}
+               inset 3px 0 9px -6px rgba(255,255,255,.42), inset -3px 0 9px -6px rgba(255,255,255,.42)}
+  .glass.v010{backdrop-filter:var(--hyalite-010, blur(3px));-webkit-backdrop-filter:var(--hyalite-010, blur(3px))}
+  .glass.v020{backdrop-filter:var(--hyalite-020, blur(3px));-webkit-backdrop-filter:var(--hyalite-020, blur(3px))}
+  .glass.v031{backdrop-filter:var(--hyalite-031, blur(3px));-webkit-backdrop-filter:var(--hyalite-031, blur(3px))}
   /* B: 0.4.0 writes --hyalite (the filter) and --hyalite-edge (the sharp rim, as inset shadows), so
      this card needs no hand-drawn highlights — the rim is computed from the geometry, not painted on. */
   .glass.lens{
@@ -75,17 +80,29 @@
 <body>
 <div class="big">HYALITE</div>
 
-<div class="slot" id="slotA" style="left:25%;top:36%">
-  <div class="glass prev" id="prev">
-    <h3>0.3.1</h3><p>The edge bends what is behind it, at one brightness throughout. Clear, but weightless.</p>
+<div class="slot" id="s010" style="left:25%;top:13%">
+  <div class="glass old v010" id="g010">
+    <h3>0.1.0</h3><p>Refraction arrives: an SDF per element, Snell for the offsets, and the no-fold cap that keeps the rim from doubling.</p>
   </div>
-  <div class="label">A · previous engine</div>
+  <div class="label">0.1.0 · it bends</div>
 </div>
-<div class="slot" id="slotB" style="left:62%;top:36%">
-  <div class="glass lens" id="lens">
-    <h3>0.4.0</h3><p>Same geometry, plus a shaded edge: it darkens where it magnifies, folds, and returns a specular line.</p>
+<div class="slot" id="s020" style="left:60%;top:13%">
+  <div class="glass old v020" id="g020">
+    <h3>0.2.0</h3><p>Same picture, built cheaply: two-level cache, size buckets, the CSS corner rule, and a light direction.</p>
   </div>
-  <div class="label">B · current engine</div>
+  <div class="label">0.2.0 · same, but cached</div>
+</div>
+<div class="slot" id="s031" style="left:25%;top:52%">
+  <div class="glass old v031" id="g031">
+    <h3>0.3.1</h3><p>The staircase goes: the field is split into two passes with a blur between them. Circles stop tearing.</p>
+  </div>
+  <div class="label">0.3.1 · no stairs</div>
+</div>
+<div class="slot" id="s040" style="left:60%;top:52%">
+  <div class="glass lens" id="lens">
+    <h3>0.4.0</h3><p>The edge stops being one brightness: it darkens where it magnifies, may fold, and returns a specular line.</p>
+  </div>
+  <div class="label">0.4.0 · it is shaded</div>
 </div>
 
 <div class="hud">
@@ -101,11 +118,11 @@
   <label>light <input id="light" type="range" min="-180" max="180" value="-140" step="5"><b id="lightV"></b></label>
   <div class="hint" id="readout"></div>
   <div class="btns">
-    <button id="swap">swap</button><button id="mat2">materialize</button><a class="btn" href="edge-lab.html">profile lab →</a><button id="grid">grid</button>
+    <button id="mat2">materialize</button><a class="btn" href="edge-lab.html">profile lab →</a><button id="grid">grid</button>
     <label class="file">load image<input id="file" type="file" accept="image/*"></label>
     <button id="reset">reset</button>
   </div>
-  <div class="hint">drag the cards · the sliders drive both, so the difference is the engine</div>
+  <div class="hint">drag the cards · the sliders drive all four, so the difference is the engine</div>
   <div class="hint" id="sup"></div>
 </div>
 
@@ -138,7 +155,7 @@
   const readout = (i) => { if (i) $('#readout').textContent =
     `max edge offset \u2248 ${i.maxDisplacement.toFixed(1)}px \u00b7 bevel ${i.bevel}px \u00b7 ` +
     `${i.folds ? 'folds (one pass)' : 'no fold (two passes)'}`; };
-  const schedule = () => Hyalite.setOpts(P).then(() => { readout(Hyalite.info()); applyLegacy(); });
+  const schedule = () => Hyalite.setOpts(P).then(() => { readout(Hyalite.info()); applyOld(); });
 
   const ok = window.Hyalite && Hyalite.supported();
   $('#sup').textContent = ok
@@ -147,16 +164,27 @@
   if (!ok) $('#sup').classList.add('warn');
   if (ok) Hyalite.attach(lens, Object.assign({ onBuild: readout }, P));
 
-  /* A runs the frozen 0.3.1 on the *same* geometry, so what you see between the cards is the engine,
-     not the parameters. Two of them do not translate: 0.3.1 capped the decay slope at 0.85 (it could
-     not fold), and its `dispersion` was a fraction of the displacement rather than pixels. */
-  const legacyOK = window.HyaliteLegacy && HyaliteLegacy.supported();
-  const toLegacy = () => ({
-    bevel: P.bevel, thickness: P.thickness, blur: P.blur, light: P.light, smooth: 1, rim: 0.45,
-    dispersion: Math.min(0.5, P.dispersion / Math.max(1, Hyalite.info() ? Hyalite.info().maxDisplacement : 40)),
-  });
-  const applyLegacy = () => { if (!legacyOK) return; HyaliteLegacy.detach($('#prev')); HyaliteLegacy.attach($('#prev'), toLegacy()); };
-  if (legacyOK) applyLegacy();
+  /* The three older engines run on the *same* geometry, so what differs between the cards is the
+     engine and not the parameters. Two options do not translate backwards: before 0.4.0 the decay
+     slope was hard-capped (none of them can fold), and `dispersion` was a fraction of the
+     displacement rather than pixels — converted here against the current field's maximum. */
+  const OLD = [
+    { api: () => window.Hyalite010, el: 'g010', keys: ['bevel', 'thickness', 'blur'] },
+    { api: () => window.Hyalite020, el: 'g020', keys: ['bevel', 'thickness', 'blur', 'light'] },
+    { api: () => window.Hyalite031, el: 'g031', keys: ['bevel', 'thickness', 'blur', 'light'], extra: { smooth: 1 } },
+  ];
+  const applyOld = () => {
+    const info = Hyalite.info();
+    const frac = Math.min(0.5, P.dispersion / Math.max(1, info ? info.maxDisplacement : 40));
+    for (const e of OLD) {
+      const api = e.api();
+      if (!api || !api.supported()) continue;
+      const o = Object.assign({ rim: 0.45, dispersion: frac }, e.extra || {});
+      for (const k of e.keys) o[k] = P[k];
+      api.detach($('#' + e.el)); api.attach($('#' + e.el), o);
+    }
+  };
+  if (ok) applyOld();
 
   // drag
   for (const slot of document.querySelectorAll('.slot')) {
@@ -166,10 +194,6 @@
     const end = () => slot.classList.remove('dragging');
     slot.addEventListener('pointerup', end); slot.addEventListener('pointercancel', end);
   }
-  $('#swap').addEventListener('click', () => {
-    const a = $('#slotA'), b = $('#slotB'), ra = [a.offsetLeft, a.offsetTop], rb = [b.offsetLeft, b.offsetTop];
-    a.style.left = rb[0] + 'px'; a.style.top = rb[1] + 'px'; b.style.left = ra[0] + 'px'; b.style.top = ra[1] + 'px';
-  });
   $('#grid').addEventListener('click', () => { document.body.classList.toggle('grid'); document.body.classList.remove('photo'); });
   $('#file').addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0]; if (!f) return;

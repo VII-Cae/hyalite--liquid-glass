@@ -49,14 +49,15 @@
   .chip.on{background:rgba(255,255,255,.86);color:#1b1f1a}
 
   /* ── HUD ───────────────────────────────────────────────── */
-  .hud{position:absolute;z-index:20;left:18px;top:16px;display:flex;flex-direction:column;gap:7px;padding:12px 14px;border-radius:12px;
+  .hud{position:absolute;z-index:20;left:16px;top:14px;width:236px;display:flex;flex-direction:column;gap:6px;padding:11px 12px;border-radius:12px;
        background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.12);font:12px/1.3 ui-monospace,Menlo,monospace;color:rgba(255,255,255,.85)}
   .hud h1{margin:0 0 2px;font:600 13px/1.2 system-ui,sans-serif}
-  .hud label{display:grid;grid-template-columns:82px 130px 52px;align-items:center;gap:8px}
-  .hud input[type=range]{width:130px;accent-color:#dfc174}
-  .hud .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+  .hud label{display:grid;grid-template-columns:64px 1fr 40px;align-items:center;gap:7px}
+  .hud label>b{text-align:right;font-weight:400;opacity:.8}
+  .hud input[type=range]{width:100%;min-width:0;accent-color:#dfc174;margin:0}
+  .hud .btns{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
   .hud a.btn{text-decoration:none;display:inline-block}
-  .hud button,.hud .file,.hud a.btn{font:inherit;padding:5px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.10);color:inherit;cursor:pointer}
+  .hud button,.hud .file,.hud a.btn{font:10.5px/1.2 ui-monospace,Menlo,monospace;white-space:nowrap;padding:4px 7px;border-radius:7px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.10);color:inherit;cursor:pointer}
   .hud button:hover,.hud .file:hover,.hud a.btn:hover{background:rgba(255,255,255,.18)}
   .hud .hint{opacity:.6}
   .hud .warn{color:#ffb4a2}
@@ -66,8 +67,8 @@
     body{overflow:auto;height:auto;min-height:100vh}
     .big{position:static;font-size:22vw;margin:12px 0 4px}
     .slot{position:relative!important;left:auto!important;top:auto!important;width:min(380px,92vw);margin:18px auto 34px;cursor:default}
-    .hud{position:static;margin:12px}
-    .hud label{grid-template-columns:82px 1fr 52px}.hud input[type=range]{width:100%}
+    .hud{position:static;width:auto;margin:12px}
+    .hud label{grid-template-columns:64px 1fr 40px}.hud input[type=range]{width:100%}
   }
 </style></head>
 <body>

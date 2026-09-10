@@ -7,22 +7,19 @@
      at full width. Shot at deviceScaleFactor 1.5 → 1920×960, which stays under GitHub's 1 MB
      ceiling for a social image (2× lands around 1 MB and gets rejected). */
   html,body{margin:0;width:1280px;height:640px;overflow:hidden}
-  body{position:relative;background:#16241d;color:#f2efe6;
+  body{position:relative;background:#1e3529;color:#f2efe6;
        font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
   /* A coarse grid: the whole point is that its straight lines come out *curved* behind the glass,
      so the ruling has to survive being looked at in a timeline thumbnail. */
   #grid{position:absolute;inset:0;
         background-image:
-          repeating-linear-gradient(0deg, transparent 0 31px, rgba(255,255,255,.34) 31px 32.4px),
-          repeating-linear-gradient(90deg, transparent 0 31px, rgba(255,255,255,.34) 31px 32.4px)}
-  .wordmark{position:absolute;left:0;right:0;top:52px;text-align:center;margin:0;
-            font:400 84px/1 Georgia,"Times New Roman",serif;letter-spacing:-.005em;
-            color:rgba(255,255,255,.95)}
+          repeating-linear-gradient(0deg, transparent 0 31px, rgba(255,255,255,.40) 31px 32.4px),
+          repeating-linear-gradient(90deg, transparent 0 31px, rgba(255,255,255,.40) 31px 32.4px)}
   /* The big word sits *behind* the glass on purpose: the part outside stays straight, the part
      under the lens bends. That contrast is the entire pitch, and it reads at thumbnail size. */
-  .behind{position:absolute;left:0;right:0;top:196px;text-align:center;margin:0;
-          font:800 232px/1 system-ui,-apple-system,"Helvetica Neue",sans-serif;
-          letter-spacing:-.06em;color:rgba(255,255,255,.34);white-space:nowrap}
+  .behind{position:absolute;left:0;right:0;top:108px;text-align:center;margin:0;
+          font:800 260px/1 system-ui,-apple-system,"Helvetica Neue",sans-serif;
+          letter-spacing:-.06em;color:rgba(255,255,255,.32);white-space:nowrap}
   .glass{position:absolute;left:50%;top:250px;transform:translateX(-50%);
          box-sizing:border-box;width:944px;height:296px;border-radius:60px;
          background:rgba(0,0,0,.10);
@@ -31,17 +28,17 @@
          box-shadow:var(--hyalite-edge,none), 0 30px 64px rgba(0,0,0,.42)}
   .glass h2{margin:0 0 14px;font:600 40px/1.1 system-ui,-apple-system,"Helvetica Neue",sans-serif;
             letter-spacing:-.02em;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.45)}
-  .glass p{margin:0;max-width:660px;font:400 25px/1.42 system-ui,-apple-system,sans-serif;
+  .glass p{margin:0;max-width:646px;font:400 24px/1.44 system-ui,-apple-system,sans-serif;
            color:rgba(255,255,255,.9);text-shadow:0 2px 12px rgba(0,0,0,.5)}
+  .glass code{font:500 .92em/1 ui-monospace,Menlo,monospace;letter-spacing:-.01em}
   .warn{position:absolute;left:16px;top:12px;font:600 20px/1.3 ui-monospace,monospace;color:#ffb4a2}
 </style></head>
 <body>
 <div id="grid"></div>
-<h1 class="wordmark">Hyalite</h1>
 <div class="behind">hyalite</div>
 <div class="glass" id="glass">
-  <h2>Real refraction, not a blur</h2>
-  <p>One lens map per element. The edge bends what is behind it — straight lines curve instead of smearing.</p>
+  <h2>Refraction, not diffusion</h2>
+  <p>Rounded-rect SDF → Snell’s law → one <code>feDisplacementMap</code>. The edge magnifies the backdrop, shades where it magnifies, and returns a specular line.</p>
 </div>
 <script>
 (() => {

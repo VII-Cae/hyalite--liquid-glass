@@ -6,15 +6,12 @@ Hyalite treats an element as a slab of glass with a bevelled edge. For the eleme
 
 > Named after hyalite, the water-clear glassy opal. It also sounds like *highlight*, which is what the edge is about.
 
-**Live:** [playground](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) · [regression cases](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) — open them in a Chromium browser.
-
 ![A glass card over a grid and a big word: outside the card the ruling stays straight, under its edge it curves.](demo/shots/card.jpg)
 
-<sub>The shipped defaults, straight out of <a href="demo/card.html"><code>demo/card.html</code></a>.</sub>
+Three pages, live on GitHub Pages — open them in a Chromium browser, everything else falls back to a plain blur:
 
-- [`demo/index.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) — plain blur vs hyalite on the same background: drag, swap, tune bevel / thickness / blur / dispersion / rim, switch to a grid or load your own photo.
-
-  ![The lens on a grid: the field fans into the corners, nothing folds, nothing creases.](demo/shots/playground-grid.jpg)
+- [`demo/index.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) — plain blur vs hyalite on the same background: drag, swap, tune the nine knobs that move the look most, switch to a grid or load your own photo. The card at the top of this page is the same engine on the same defaults.
+- [`demo/edge-lab.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/edge-lab.html) — the three bevel profiles side by side on one set of parameters, with an oscilloscope for the edge: displacement, the brightness the caustic implies, and the signed profile that comes out of them.
 - [`demo/cases.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) — self-checking page: asymmetric, elliptical and overlap-rule radii, twins sharing a filter, size buckets, quarter-symmetry read back out of the map, a seam-free direction field on a circle, a dispersion that does not scale with the lens, the shade read out of the map's blue channel, the folding default staying one pass, a streaming bubble, clamps read back rather than assumed.
 - [`demo/run-cases.mjs`](https://github.com/VII-Cae/hyalite--liquid-glass/blob/main/demo/run-cases.mjs) — not a page to open: a command-line script that runs `cases.html` in a real headless Chromium and prints red/green with an exit code. `npm test`, or `node demo/run-cases.mjs` (Node 22+, no dependencies). Real time on purpose — `--virtual-time-budget` fast-forwards timers without promising frames, and two cases wait on a `requestAnimationFrame` ramp and a `ResizeObserver`, so under virtual time they report false failures.
 

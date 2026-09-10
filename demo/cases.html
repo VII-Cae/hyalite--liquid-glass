@@ -193,7 +193,16 @@
   // settle: while growing → plain blur; after 120 ms of quiet → url again
   Hyalite.attach($('grow'), O); await wait(60);
   let sawFallback = false;
-  for (let i = 0; i < 12; i++) { $('growText').textContent += 'more words arrive every sixty milliseconds and the bubble grows taller '; await wait(60); if (/^blur/.test(v($('grow')))) sawFallback = true; }
+  /* Check on the frame the resize lands, not after a sleep: the fallback only holds until `settle`
+     ms of quiet, and on the runner's software rasteriser a 60 ms sleep can really take 200, which
+     lets the rebuild happen before we look and reports a false failure. */
+  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+  const peek = () => { if (/^blur/.test(v($('grow')))) sawFallback = true; };
+  for (let i = 0; i < 12; i++) {
+    $('growText').textContent += 'more words arrive and the bubble grows taller ';
+    await frame(); peek();
+    await wait(40); peek();
+  }
   check('growing element falls back to plain blur', sawFallback, v($('grow')));
   await until(() => /^url\(#hyalite-\d+\)$/.test(v($('grow'))), 2000);   // settled, rebuilt, and the ramp is over
   check('rebuilt after it settled', /^url/.test(v($('grow'))), v($('grow')));
@@ -244,6 +253,31 @@
     }
     check('inner ∘ outer equals the one-pass field', worstSum < 0.6, `worst |inner + outer − m| ${worstSum.toFixed(2)}px of ${maxd.toFixed(1)}px · split ${split.toFixed(2)}`);
   } catch (e) { check('inner ∘ outer equals the one-pass field', false, 'could not read the maps back: ' + e.message); }
+
+  /* Handover between watchers. An element dragged from one observed container to another produces
+     two records in the same microtask — B sees an addition, A sees a removal — and the order they
+     arrive in is just the order the observers were created. Responding to each record on its own
+     loses the element: B's attach is skipped because it is still bound to A, then A's detach
+     unbinds it, and nothing in B ever picks it up. */
+  const wcA = document.body.appendChild(Object.assign(document.createElement('div'), { id: 'wcA' }));
+  const wcB = document.body.appendChild(Object.assign(document.createElement('div'), { id: 'wcB' }));
+  const mover = Object.assign(document.createElement('div'), { className: 'glass twin' });
+  wcA.appendChild(mover);
+  /* B is created first on purpose: observer callbacks fire in creation order, so B sees the
+     addition before A sees the removal — the order that loses the element. */
+  const wB = Hyalite.watch(wcB, '.twin', O);
+  const wA = Hyalite.watch(wcA, '.twin', O);
+  await wait(120);
+  const inA = /^url/.test(v(mover));
+  wcB.appendChild(mover);                       // the move
+  await until(() => /^url/.test(v(mover)), 400);
+  const afterMove = /^url/.test(v(mover));
+  wA.stop();                                    // if B never took over, this takes the glass away
+  await wait(90);
+  const ownedByB = /^url/.test(v(mover));
+  check('an element moved between watchers is taken over by the new one', inA && afterMove && ownedByB,
+        `bound in A ${inA} · still glass after the move ${afterMove} · survives A stopping ${ownedByB}`);
+  wB.stop();
 
   // escape hatch for the day WebKit ships backdrop filters
   const off = Hyalite.force(false) === false && Hyalite.supported() === false;

@@ -31,6 +31,35 @@ if (typeof WebSocket === 'undefined') {
   process.exit(2);
 }
 
+/* Documentation drift is invisible to the browser cases and rots quietly — 0.4.0 shipped with four
+   wrong numbers in both option tables because the defaults were retuned after the tables were
+   written, and nothing anywhere would have caught it. The tables are machine-checkable, so check
+   them here, before paying for a browser. */
+function docProblems() {
+  const root = path.join(HERE, '..');
+  const g = {};
+  new Function('window', fs.readFileSync(path.join(root, 'hyalite.js'), 'utf8'))(g);
+  const D = g.Hyalite.DEFAULTS;
+  const out = [];
+  for (const file of ['README.md', 'README.zh-CN.md']) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    for (const k of Object.keys(D)) {
+      const m = text.match(new RegExp('\\| `' + k + '` \\| ([^|]+) \\|'));
+      if (!m) { out.push(`${file}: no row for \`${k}\``); continue; }
+      const doc = m[1].trim().replace(/[`\u2018\u2019]/g, '').replace('\u2212', '-');
+      if (doc !== String(D[k])) out.push(`${file}: \`${k}\` says ${doc}, DEFAULTS says ${D[k]}`);
+    }
+  }
+  return out;
+}
+const drift = docProblems();
+if (drift.length) {
+  console.error('DOC DRIFT  \u00b7  the option tables no longer match DEFAULTS');
+  drift.forEach((d) => console.error('  \u2717 ' + d));
+  process.exit(1);
+}
+console.log('\u2713 option tables match DEFAULTS in both READMEs');
+
 const CANDIDATES = [
   process.env.HYALITE_CHROME,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',

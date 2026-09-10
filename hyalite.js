@@ -664,9 +664,33 @@
     if (!st.key) setFallback(el, st);
   }
 
+  /* Which watcher owns an element *right now*: the first one whose container still contains it and
+     whose selector it still matches. Insertion order breaks ties, which is what "whoever attached
+     first keeps it" already meant. */
+  function ownerOf(el) {
+    if (!el.isConnected) return null;
+    for (const w of watchers) if (w.container.contains(el) && el.matches(w.selector)) return w;
+    return null;
+  }
+  /* Reconcile one element against that answer. A move between two observed containers produces two
+     records in the same microtask — an addition in the new container, a removal from the old — and
+     they arrive in observer-creation order, which has nothing to do with what happened. Acting on
+     each record on its own loses the element whenever the addition lands first: the new watcher's
+     attach is skipped because it is still bound to the old one, and then the old watcher's detach
+     unbinds it for good, with nothing left watching it. Deciding from where the element *is* makes
+     the order irrelevant — which matters for drag and drop, remounts and reordered lists. */
+  function reconcile(el) {
+    const st = bound.get(el);
+    if (st && !st.watcher) return;                  // attached by hand: watchers never touch it
+    const owner = ownerOf(el);
+    if (!owner) { if (st) detach(el); return; }
+    if (!st) { attach(el, owner.opts, owner); return; }
+    if (st.watcher !== owner) { detach(el); attach(el, owner.opts, owner); }   // handover
+  }
+
   /* Watch a container: matching elements present now, added later, or gaining the class later are
      attached; removed ones or ones losing the class are detached. Returns { stop }. Several watchers
-     can coexist. */
+     can coexist, and an element can move between them. */
   function watch(container, selector, opts) {
     const w = { container, selector, opts: sanitize(Object.assign({}, DEFAULTS, opts || {})), mo: null };
     const matches = (node) => {
@@ -676,28 +700,27 @@
       out.push(...node.querySelectorAll(selector));
       return out;
     };
-    const consider = (node) => {
-      if (node.nodeType !== 1) return;
-      if (node.matches(selector)) { if (!bound.has(node)) attach(node, w.opts, w); }
-      else { const st = bound.get(node); if (st && st.watcher === w) detach(node); }
-    };
     w.mo = new MutationObserver((muts) => {
+      const touched = new Set();
       for (const m of muts) {
-        if (m.type === 'attributes') { consider(m.target); continue; }
-        m.addedNodes.forEach((n) => matches(n).forEach((el) => attach(el, w.opts, w)));
-        m.removedNodes.forEach((n) => matches(n).forEach((el) => { const st = bound.get(el); if (st && st.watcher === w) detach(el); }));
+        if (m.type === 'attributes') { touched.add(m.target); continue; }
+        m.addedNodes.forEach((n) => matches(n).forEach((el) => touched.add(el)));
+        m.removedNodes.forEach((n) => matches(n).forEach((el) => touched.add(el)));
       }
+      touched.forEach(reconcile);
     });
     w.mo.observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-    container.querySelectorAll(selector).forEach((el) => attach(el, w.opts, w));
     watchers.add(w);
+    container.querySelectorAll(selector).forEach((el) => { if (!bound.has(el)) attach(el, w.opts, w); });
     return { stop: () => stopWatcher(w) };
   }
   function stopWatcher(w) {
     if (!watchers.has(w)) return;
     w.mo.disconnect();
     watchers.delete(w);
-    Array.from(bound.entries()).filter(([, st]) => st.watcher === w).forEach(([el]) => detach(el));
+    // Hand anything it owned to a watcher that still covers it, rather than stripping the glass off
+    // an element some other watcher is also watching.
+    Array.from(bound.entries()).filter(([, st]) => st.watcher === w).forEach(([el]) => { detach(el); reconcile(el); });
   }
   function unwatch() { Array.from(watchers).forEach(stopWatcher); }   // stop every watcher; manual attaches survive
 

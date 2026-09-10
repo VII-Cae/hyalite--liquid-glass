@@ -244,7 +244,7 @@
   function acquire(key, W, H, radii, o) {
     let rec = filters.get(key);
     if (!rec) {
-      const id = 'hyalite-' + (++seq);
+      const id = 'hyalite010-' + (++seq);   // per-version prefix: four engines on one page must not collide on filter ids
       const map = buildMap(W, H, radii, o);
       rec = { id, refs: 0, el: buildFilter(id, W, H, map, o) };
       ensureHost().appendChild(rec.el);

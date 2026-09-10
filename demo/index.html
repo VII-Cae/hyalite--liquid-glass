@@ -82,25 +82,25 @@
 
 <div class="slot" id="s010" style="left:25%;top:13%">
   <div class="glass old v010" id="g010">
-    <h3>0.1.0</h3><p>Refraction arrives: an SDF per element, Snell for the offsets, and the no-fold cap that keeps the rim from doubling.</p>
+    <h3>0.1.0</h3><p>Refraction arrives: an SDF per element, Snell for the offsets, a no-fold cap. Shipped conservative — a 16px bevel over 10px of glass.</p>
   </div>
   <div class="label">0.1.0 · it bends</div>
 </div>
 <div class="slot" id="s020" style="left:60%;top:13%">
   <div class="glass old v020" id="g020">
-    <h3>0.2.0</h3><p>Same picture, built cheaply: two-level cache, size buckets, the CSS corner rule, and a light direction.</p>
+    <h3>0.2.0</h3><p>Same picture, built cheaply: two-level cache, size buckets, the CSS corner rule. Adds a light direction — the only part of it you can see.</p>
   </div>
   <div class="label">0.2.0 · same, but cached</div>
 </div>
 <div class="slot" id="s031" style="left:25%;top:52%">
   <div class="glass old v031" id="g031">
-    <h3>0.3.1</h3><p>The staircase goes: the field is split into two passes with a blur between them. Circles stop tearing.</p>
+    <h3>0.3.1</h3><p>The staircase goes: two displacement passes with a blur between them. Circles stop tearing. Same conservative defaults.</p>
   </div>
   <div class="label">0.3.1 · no stairs</div>
 </div>
 <div class="slot" id="s040" style="left:60%;top:52%">
   <div class="glass lens" id="lens">
-    <h3>0.4.0</h3><p>The edge stops being one brightness: it darkens where it magnifies, may fold, and returns a specular line.</p>
+    <h3>0.4.0</h3><p>The edge stops being one brightness: it darkens where it magnifies, folds, returns a specular line — and the defaults stop being shy.</p>
   </div>
   <div class="label">0.4.0 · it is shaded</div>
 </div>
@@ -122,7 +122,7 @@
     <label class="file">load image<input id="file" type="file" accept="image/*"></label>
     <button id="reset">reset</button>
   </div>
-  <div class="hint">drag the cards · the sliders drive all four, so the difference is the engine</div>
+  <div class="hint">drag the cards · each shows its own release defaults; the sliders drive 0.4.0 only</div>
   <div class="hint" id="sup"></div>
 </div>
 
@@ -155,7 +155,7 @@
   const readout = (i) => { if (i) $('#readout').textContent =
     `max edge offset \u2248 ${i.maxDisplacement.toFixed(1)}px \u00b7 bevel ${i.bevel}px \u00b7 ` +
     `${i.folds ? 'folds (one pass)' : 'no fold (two passes)'}`; };
-  const schedule = () => Hyalite.setOpts(P).then(() => { readout(Hyalite.info()); applyOld(); });
+  const schedule = () => Hyalite.setOpts(P).then(() => readout(Hyalite.info()));
 
   const ok = window.Hyalite && Hyalite.supported();
   $('#sup').textContent = ok
@@ -164,27 +164,14 @@
   if (!ok) $('#sup').classList.add('warn');
   if (ok) Hyalite.attach(lens, Object.assign({ onBuild: readout }, P));
 
-  /* The three older engines run on the *same* geometry, so what differs between the cards is the
-     engine and not the parameters. Two options do not translate backwards: before 0.4.0 the decay
-     slope was hard-capped (none of them can fold), and `dispersion` was a fraction of the
-     displacement rather than pixels — converted here against the current field's maximum. */
-  const OLD = [
-    { api: () => window.Hyalite010, el: 'g010', keys: ['bevel', 'thickness', 'blur'] },
-    { api: () => window.Hyalite020, el: 'g020', keys: ['bevel', 'thickness', 'blur', 'light'] },
-    { api: () => window.Hyalite031, el: 'g031', keys: ['bevel', 'thickness', 'blur', 'light'], extra: { smooth: 1 } },
-  ];
-  const applyOld = () => {
-    const info = Hyalite.info();
-    const frac = Math.min(0.5, P.dispersion / Math.max(1, info ? info.maxDisplacement : 40));
-    for (const e of OLD) {
-      const api = e.api();
-      if (!api || !api.supported()) continue;
-      const o = Object.assign({ rim: 0.45, dispersion: frac }, e.extra || {});
-      for (const k of e.keys) o[k] = P[k];
-      api.detach($('#' + e.el)); api.attach($('#' + e.el), o);
-    }
-  };
-  if (ok) applyOld();
+  /* The three older cards render each engine on *its own* shipped defaults — that is the material
+     that version actually came with, which is the honest thing to compare. Nothing drives them, so
+     they are attached once. The sliders belong to 0.4.0 alone. */
+  const OLD = [['Hyalite010', 'g010'], ['Hyalite020', 'g020'], ['Hyalite031', 'g031']];
+  for (const [name, id] of OLD) {
+    const api = window[name];
+    if (api && api.supported()) api.attach($('#' + id), {});
+  }
 
   // drag
   for (const slot of document.querySelectorAll('.slot')) {

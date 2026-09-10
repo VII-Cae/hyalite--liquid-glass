@@ -10,7 +10,7 @@
 
 三个页面都挂在 GitHub Pages 上 —— 用 Chromium 系浏览器打开，别的浏览器会退回普通模糊：
 
-- [`demo/index.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) 试验台：**四代引擎同时在跑**，每一代都吃同一组几何，所以卡片之间的差别是版本而不是参数 —— 0.1.0 把边缘弯过去，0.2.0 把这件事做便宜，0.3.1 去掉阶梯，0.4.0 给边缘明暗。可以拖，调那九个最影响观感的旋钮，切网格底或上传自己的照片。（`demo/legacy/` 放着旧引擎的逐字副本，各挂各的全局名和自定义属性，所以四代能在一页上同时渲染 —— 为对比冻结的，不是受支持的构建。）
+- [`demo/index.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) 试验台：**四代引擎同时在跑，每一代都用它自己出厂的那组默认值** —— 0.1.0 把边缘弯过去，0.2.0 把这件事做便宜，0.3.1 去掉阶梯，0.4.0 给边缘明暗、而且默认值不再拘谨。那才是每一版真正带出门的材质，也是诚实的对比：前三版是 10px 玻璃上一道 16px 倒角、中心 3px 磨砂；现在这版是 59 和 37，中心是清透的。滑杆只管 0.4.0 那张。（`demo/legacy/` 放着旧引擎的逐字副本，各挂各的全局名、自定义属性和滤镜 id 前缀，所以四代能在一页上同时渲染 —— 为对比冻结的，不是受支持的构建。）
 - [`demo/edge-lab.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/edge-lab.html) 剖面台：三种倒角剖面在同一组参数下并排，外加一台示波器画边缘 —— 位移、焦散推出来的亮度、以及两者合成的那条带符号剖面。
 - [`demo/cases.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) 自检页：不对称圆角、椭圆圆角、CSS 相邻角规则、共用滤镜的双胞胎、尺寸分桶、把贴图读回来验四分之一对称、圆形上不出接缝的方向场、不随透镜放大的色散、从贴图蓝通道读出来的边缘明暗、会折叠的默认档确实走单段、流式长高的气泡，以及把封顶后的值真读回来核对（而不是「没抛异常就算过」）。
 - [`demo/run-cases.mjs`](https://github.com/VII-Cae/hyalite--liquid-glass/blob/main/demo/run-cases.mjs) **不是用来打开的页面**，是命令行脚本：把 `cases.html` 放进真正的 headless Chromium 里跑，打印红绿并带退出码。`npm test`，或者 `node demo/run-cases.mjs`（Node 22+，零依赖）。**故意用真实时间**——`--virtual-time-budget` 只快进定时器、不保证出帧，而其中两条用例等的正是帧里才会发生的事（`requestAnimationFrame` 的渐入、`ResizeObserver` 的回退），虚拟时间下它们会报假的失败。

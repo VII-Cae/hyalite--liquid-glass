@@ -34,6 +34,7 @@ export interface HyaliteOptions {
   /** how much the edge darkens, 0–2: the caustic plus the Fresnel transmission loss */ shade?: number;
   /** how much light the edge sends back, 0–4: a wide Fresnel sheen plus a tight specular line */ rim?: number;
   /** px: how far in the shading and the sheen reach. Absolute, not a share of the bevel */ edgeW?: number;
+  /** saturation inside the bevel ring, 0–3. Folding plus dispersion muddies the colour there; below 1 cleans it. 1 = off */ sat?: number;
   /** strength of the CSS rim written to `--hyalite-edge`, 0–2 (0 writes `none`) */ edge?: number;
   /** light direction in degrees: 0 = straight above, positive = clockwise */ light?: number;
   /** px: blur that hides Chromium's nearest-neighbour staircase along the rim, inside the bevel ring only. Ignored when the field folds. 0 = one pass */ smooth?: number;

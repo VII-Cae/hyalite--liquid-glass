@@ -48,6 +48,9 @@
  *   edgeW        px — how far in the shading and the sheen reach. Absolute on purpose: the bright
  *                line and the dark hairline under it are a pixel or two of real glass whatever the
  *                bevel is, and scaling them with the bevel turns a wide rim into a grey band
+ *   sat          saturation inside the bevel ring, 0–3. Folding plus dispersion muddies the colour
+ *                along the rim; below 1 cleans it up. The centre is never touched. 1 = off (and the
+ *                seven filter nodes it costs are skipped)
  *   edge         strength of the CSS rim written to `--hyalite-edge`, 0–2. Inset shadows on the
  *                element itself, so they stay crisp where a filter-drawn line would not — and they
  *                work in browsers that get no refraction at all. `0` writes `none`
@@ -128,19 +131,20 @@
      with a folding slope. The centre stays clear while the edge concentrates the backdrop into a
      coloured band; the folding is confined to that narrow rim, where blur and dispersion cover the
      staircase Chromium's nearest-neighbour sampler leaves behind. */
-  const DEFAULTS = { bevel: 41, thickness: 96, slope: 2.7, shape: 'squircle', blur: 1, dispersion: 1.6,
-                     shade: 0.62, rim: 1.76, edgeW: 6.5, edge: 0.32, light: -140, smooth: 1,
+  const DEFAULTS = { bevel: 37, thickness: 59, slope: 2.7, shape: 'squircle', blur: 1, dispersion: 1.6,
+                     shade: 0.46, rim: 1.76, edgeW: 8, sat: 0.86, edge: 0.32, light: -140, smooth: 1,
                      materialize: 0, settle: 120, self: false };
   const LIMITS = { bevel: [1, 400], thickness: [0, 400], slope: [0.2, 4], blur: [0, 64], dispersion: [0, 8],
-                   shade: [0, 2], rim: [0, 4], edgeW: [0.5, 64], edge: [0, 2], light: [-180, 180],
+                   shade: [0, 2], rim: [0, 4], edgeW: [0.5, 64], sat: [0, 3], edge: [0, 2], light: [-180, 180],
                    smooth: [0, 4], materialize: [0, 10000], settle: [0, 10000] };
   const SHAPES = ['circle', 'squircle', 'lip'];
   /* Ratios inside `shade` and `rim`, and the three constants that came out of the same tuning pass.
      They are deliberately not options: the *balance* between them is what took the tuning, and two
-     knobs that have to move together are worse than one. Change them here if you disagree. */
-  const ABSORB = 0.46 / 0.62;      // Fresnel transmission loss, as a share of `shade`
+     knobs that have to move together are worse than one. Change them here if you disagree.
+     `sat` is an option rather than a constant because it fights a different thing — folding plus
+     dispersion muddies the colour along the rim, and how much depends on what is behind the glass. */
+  const ABSORB = 0.50 / 0.46;      // Fresnel transmission loss, as a share of `shade`
   const GLOW = 0.40 / 1.76;        // the wide Fresnel glow, as a share of `rim`
-  const SAT = 1.1;                 // saturation inside the bevel ring
   const SHARP = 44;                // exponent of the tight specular line
   const LIP = 0.3;                 // how far the lip profile dips in the middle
   const AA_SLOPE = 0.3;            // rule 4: the ring blur is fully on where the inner pass still stretches ≥ ~1.4×
@@ -424,6 +428,30 @@
     for (const ch of ['R', 'G', 'B']) sh.appendChild(prim('feFunc' + ch, { type: 'table', tableValues: '0 1 1' }));
     f.appendChild(sh);
     f.appendChild(prim('feBlend', { in: 'glass', in2: 'shadeLayer', mode: 'multiply', result: 'shaded' }));
+    /* Saturation, inside the bevel ring only. Folding shows the same backdrop twice and dispersion
+       pulls the channels apart, which together muddy the colour along the rim; pulling saturation
+       down there cleans it without touching the centre (rule 1 of the recipe: never restyle what is
+       behind the glass). The ring mask needs no extra channel — the centre has zero displacement,
+       so |R − ½| + |G − ½| *is* the ring. */
+    let base = 'shaded';
+    if (o.sat !== 1) {
+      for (const [ch, row] of [['R', '1 0 0 0 0'], ['G', '0 1 0 0 0']]) {
+        f.appendChild(prim('feColorMatrix', { in: 'map', type: 'matrix',
+          values: `0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  ${row}`, result: 'rg' + ch }));   // RGB ← white, A ← that channel
+        const tf = prim('feComponentTransfer', { in: 'rg' + ch, result: 'ring' + ch });
+        tf.appendChild(prim('feFuncA', { type: 'table', tableValues: '1 0 1' }));      // |v − ½| × 2
+        f.appendChild(tf);
+      }
+      f.appendChild(prim('feComposite', { in: 'ringR', in2: 'ringG', operator: 'arithmetic', k1: 0, k2: 1, k3: 1, k4: 0, result: 'ring' }));
+      f.appendChild(prim('feColorMatrix', { in: 'shaded', type: 'saturate', values: o.sat, result: 'satd' }));
+      const inv = prim('feComponentTransfer', { in: 'ring', result: 'ringInv' });
+      inv.appendChild(prim('feFuncA', { type: 'table', tableValues: '1 0' }));
+      f.appendChild(inv);
+      f.appendChild(prim('feComposite', { in: 'satd', in2: 'ring', operator: 'in', result: 'satIn' }));
+      f.appendChild(prim('feComposite', { in: 'shaded', in2: 'ringInv', operator: 'in', result: 'satOut' }));
+      f.appendChild(prim('feComposite', { in: 'satIn', in2: 'satOut', operator: 'arithmetic', k1: 0, k2: 1, k3: 1, k4: 0, result: 'glassSat' }));
+      base = 'glassSat';
+    }
     // Above neutral it is light the glass sends back, so it adds. The table takes the upper half;
     // the linear pass after it is what `materialize` ramps.
     f.appendChild(prim('feColorMatrix', { in: 'map', type: 'matrix',
@@ -434,7 +462,7 @@
     const lg = prim('feComponentTransfer', { in: 'litHalf', result: 'litLayer' });
     lg.appendChild(prim('feFuncA', { type: 'linear', slope: 1, intercept: 0 }));
     f.appendChild(lg);
-    f.appendChild(prim('feComposite', { in: 'litLayer', in2: 'shaded', operator: 'over' }));
+    f.appendChild(prim('feComposite', { in: 'litLayer', in2: base, operator: 'over' }));
     return f;
   }
 
@@ -540,7 +568,7 @@
     if (W < 4 || H < 4) return;                       // not laid out yet / hidden
     const radii = radiiOf(el, W, H);
     const o = st.opts;
-    const key = `${W}x${H}|${radii.join(',')}|${o.bevel}|${o.thickness}|${o.slope}|${o.shape}|${o.shade}|${o.rim}|${o.edgeW}|${o.blur}|${o.dispersion}|${o.light}|${o.smooth}|${o.self ? 'self' : 'back'}`;
+    const key = `${W}x${H}|${radii.join(',')}|${o.bevel}|${o.thickness}|${o.slope}|${o.shape}|${o.shade}|${o.rim}|${o.edgeW}|${o.sat}|${o.blur}|${o.dispersion}|${o.light}|${o.smooth}|${o.self ? 'self' : 'back'}`;
     st.w = W; st.h = H;
     let rec;
     if (key === st.key) rec = filters.get(key);       // same geometry (e.g. back from a settle): just re-point

@@ -89,13 +89,14 @@
 <div id="hud">
   <h1 id="fold">剖面台</h1>
   <div class="sec">几何</div>
-  <label>倒角<input type="range" id="bevel" min="4" max="200" step="1" value="41"><span id="v_bevel"></span></label>
-  <label>厚度<input type="range" id="thickness" min="0" max="220" step="1" value="96"><span id="v_thickness"></span></label>
+  <label>倒角<input type="range" id="bevel" min="4" max="200" step="1" value="37"><span id="v_bevel"></span></label>
+  <label>厚度<input type="range" id="thickness" min="0" max="220" step="1" value="59"><span id="v_thickness"></span></label>
   <label>斜率<input type="range" id="slope" min="0.3" max="4" step="0.05" value="2.7"><span id="v_slope"></span></label>
   <div class="sec">边缘</div>
-  <label>暗<input type="range" id="shade" min="0" max="2" step="0.02" value="0.62"><span id="v_shade"></span></label>
+  <label>暗<input type="range" id="shade" min="0" max="2" step="0.02" value="0.46"><span id="v_shade"></span></label>
   <label>反光<input type="range" id="rim" min="0" max="4" step="0.02" value="1.76"><span id="v_rim"></span></label>
-  <label>边宽<input type="range" id="edgeW" min="0.5" max="40" step="0.5" value="6.5"><span id="v_edgeW"></span></label>
+  <label>边宽<input type="range" id="edgeW" min="0.5" max="40" step="0.5" value="8"><span id="v_edgeW"></span></label>
+  <label>饱和<input type="range" id="sat" min="0" max="2" step="0.02" value="0.86"><span id="v_sat"></span></label>
   <label>外描边<input type="range" id="edge" min="0" max="2" step="0.02" value="0.32"><span id="v_edge"></span></label>
   <div class="sec">通用</div>
   <label>模糊<input type="range" id="blur" min="0" max="14" step="0.25" value="1"><span id="v_blur"></span></label>
@@ -124,7 +125,7 @@
 /* ══════════════════════════════════════════════════════════════════════
    驱动
    ══════════════════════════════════════════════════════════════════════ */
-const KEYS=['bevel','thickness','slope','shade','rim','edgeW','edge','blur','dispersion','light','smooth'];
+const KEYS=['bevel','thickness','slope','shade','rim','edgeW','sat','edge','blur','dispersion','light','smooth'];
 const el=id=>document.getElementById(id);
 const opts=()=>{ const o={}; KEYS.forEach(k=>o[k]=+el(k).value); return o; };
 
@@ -169,7 +170,8 @@ function drawScope(info){
     for(let i=0;i<=N;i++){const y=H-f(arr[i])*H; i?g.lineTo(X(i),y):g.moveTo(X(i),y);} g.stroke(); };
   const mx=Math.max(...pr.m.map(Math.abs),1e-6);
   line(pr.m,    v=>.5+v/mx*.45,                       '#7fcdcd');
-  line(pr.gain, v=>Math.min(1,v),                     '#ffb4a2');
+  const gm=Math.max(1,...pr.gain);                    // lip 下 gain 可以 > 1（位移压缩，边缘反而变亮）
+  line(pr.gain, v=>v/gm,                              '#ffb4a2');
   line(pr.edge, v=>.5+Math.max(-1,Math.min(1,v))*.45, '#dfc174');
   const sv=el('strip'), sc=sv.getContext('2d'), SW=sv.width;
   for(let x=0;x<SW;x++){
@@ -179,7 +181,7 @@ function drawScope(info){
     sc.fillStyle='rgb('+c+','+c+','+c+')'; sc.fillRect(x,0,1,sv.height);
   }
   el('out').textContent='倒角 '+info.bevel+'px · 最大位移 '+info.maxDisplacement.toFixed(1)+'px · '+
-    (info.folds?'折叠（单段）':'不折叠（两段）')+' · 最暗 ×'+Math.min(...pr.gain).toFixed(2);
+    (info.folds?'折叠（单段）':'不折叠（两段）')+' · 亮度 ×'+Math.min(...pr.gain).toFixed(2)+'–'+Math.max(...pr.gain).toFixed(2);
 }
 
 /* ── 底图 ────────────────────────────────────────────────────── */

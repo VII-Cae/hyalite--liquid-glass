@@ -48,7 +48,10 @@
     window.__cardReady = 'unsupported';
     return;
   }
-  Hyalite.attach(document.getElementById('glass'), {});   // the shipped defaults, verbatim
+  const q = new URLSearchParams(location.search);
+  const o = {};
+  for (const k of ['thickness','bevel','shade','edgeW','sat']) if (q.has(k)) o[k] = +q.get(k);
+  Hyalite.attach(document.getElementById('glass'), o);   // the shipped defaults unless overridden
   requestAnimationFrame(() => requestAnimationFrame(() => { window.__cardReady = 'ok'; }));
 })();
 </script>

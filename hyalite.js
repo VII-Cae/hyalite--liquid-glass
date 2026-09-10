@@ -1,5 +1,5 @@
 /*!
- * hyalite v0.3.0 — real refraction "liquid glass" for the web.
+ * hyalite v0.3.1 — real refraction "liquid glass" for the web.
  * https://github.com/VII-Cae/hyalite--liquid-glass · MIT © 2026 VII-Cae
  *
  * How it works
@@ -23,7 +23,9 @@
  *   bevel        width of the bent zone along the edge, px. Clamped to the largest corner radius
  *   thickness    glass thickness, px — drives how far the edge pulls the backdrop inward
  *   blur         frost in the centre, px (feGaussianBlur stdDeviation)
- *   dispersion   chromatic aberration, 0–0.5 (0 = single pass, cheaper)
+ *   dispersion   chromatic aberration, 0–0.5 (0 = single pass, cheaper). A fraction of the
+ *                displacement; the resulting channel separation is capped at MAX_CA px, so a very
+ *                thick lens shows a coloured edge rather than a radial rainbow
  *   rim          geometry-aware edge light, 0–4 (0 = off)
  *   smooth       px — blur that hides the browser's nearest-neighbour staircase along the rim (rule 4).
  *                Only the bevel ring sees it, never the centre. 0 = one displacement pass, no hiding
@@ -100,6 +102,7 @@
   const MAX_MAP_PX = 320000;       // ≈ 565×565: larger elements get a downsampled map
   const QZ = 1.02, QZ_MIN = 64;    // map size buckets: ≤ 2 % per side; elements this small stay exact
   const LOG_QZ = Math.log(QZ);
+  const MAX_CA = 3;                // px — cap on chromatic separation (see buildFilter); past ~3 px it reads as a rainbow, not glass
   const MAX_IDLE_MAPS = 24;        // maps nobody uses stay warm this many deep, then go oldest-first
 
   let host = null;                 // hidden <svg> holding every <filter>
@@ -192,9 +195,12 @@
     // Ring mask for the in-between blur: 1 where the inner pass still stretches noticeably, 0 where it does not
     const wAt = (d) => { const i = Math.floor(Math.min(N - 1e-6, Math.max(0, d) / STEP)); return Math.min(1, (tab1[i] - tab1[i + 1]) / STEP / AA_SLOPE); };
     const sdf = makeSDF(W, H, radii);
-    // A radius may legitimately pass half the short side (CSS only shrinks radii that share an edge),
-    // so the direction field is capped at the short side itself rather than at half of it.
-    const cap = Math.min(W, H) - 0.5;
+    // Rule 3 widens the radii to smooth the direction field — but makeSDF's rounded-rect formula
+    // only holds while R ≤ half the short side. Past that, W/2 − R goes negative, both q terms are
+    // positive everywhere, min(max(qx, qy), 0) is pinned at 0 and the field degenerates into a
+    // shifted circle: the gradient turns discontinuous on the axes. A circle (radius 50 %) hits this
+    // with any bevel at all — it came out as a cross-shaped seam plus radial colour fans.
+    const cap = Math.min(W, H) / 2 - 0.5;
     const sdfDir = makeSDF(W, H, radii.map((R) => Math.min(R + B, cap)));   // rule 3
     // Downsampling: map pixel (x, y) ↔ CSS pixel ((x+.5)/k, (y+.5)/k); offsets stay in CSS px
     const k = Math.min(1, Math.sqrt(MAX_MAP_PX / (W * H)));
@@ -298,7 +304,14 @@
       disp = Math.min(0.95, o.dispersion / map.split);
     }
     if (disp > 0) {
-      const scales = { R: scale * (1 - disp), G: scale, B: scale * (1 + disp) };
+      // `dispersion` is a fraction of the displacement, so the channel separation grows with the
+      // lens: at 60 px of displacement a 0.16 setting pulls the channels 10 px apart and the element
+      // turns into a radial rainbow. Real glass disperses by a material constant — crown glass
+      // shifts red to blue by about 1.5 % of the offset — which has nothing to do with how strong
+      // the lens is. Clamping the separation keeps ordinary setups (under MAX_CA px) bit-identical
+      // and only catches the runaway. Making it an absolute px option is a 0.4.0 change.
+      const sep = Math.min(scale * disp / 2, MAX_CA);
+      const scales = { R: scale - 2 * sep, G: scale, B: scale + 2 * sep };
       for (const ch of ['R', 'G', 'B']) {
         f.appendChild(prim('feDisplacementMap', { in: src, in2: 'map', scale: scales[ch].toFixed(2),
                                                   xChannelSelector: 'R', yChannelSelector: 'G', result: 'd' + ch }));
@@ -576,7 +589,7 @@
   };
   function force(v) { forced = (v === null || v === undefined) ? null : !!v; supportedMemo = null; return supported(); }
 
-  const API = { watch, unwatch, attach, detach, refresh, setOpts, info, supported, force, DEFAULTS, version: '0.3.0' };
+  const API = { watch, unwatch, attach, detach, refresh, setOpts, info, supported, force, DEFAULTS, version: '0.3.1' };
   root.Hyalite = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);

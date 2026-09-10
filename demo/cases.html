@@ -39,6 +39,7 @@
   <div class="glass bkt" id="bktB" style="width:304px"><h2>bucket B</h2>304 × 120 — same map</div>
   <div class="glass grow" id="grow"><h2>growing bubble</h2><span id="growText">streaming text… </span></div>
   <div class="glass big" id="big"><h2>large element</h2>the map is downsampled to ≈ 320k pixels and stretched back by feImage</div>
+  <div class="glass bkt" id="thick" style="border-radius:60px"><h2>thick lens</h2>thickness 300 — the channel separation is capped, not scaled with the displacement</div>
 </main>
 <pre id="out">running…</pre>
 <script>
@@ -114,6 +115,39 @@
     }
     check('quarter-symmetry mirrors exactly', worstR <= 1 && worstG <= 1, `worst |R+R′−256| ${worstR} · |G−G′| ${worstG}`);
   } catch (e) { check('quarter-symmetry mirrors exactly', false, 'could not read the map back: ' + e.message); }
+
+  // rule 3 widens the radii for the direction field, but makeSDF only holds while R ≤ half the short
+  // side. A circle is exactly at the limit, so any bevel used to push it past — and the gradient then
+  // flipped sign across the axes: a cross-shaped seam. The map is 120×120, so rows 59/60 straddle the
+  // horizontal axis and columns 59/60 the vertical one; G must not jump across one, nor R across the other.
+  let seamG = 0, seamR = 0;
+  try {
+    const im = new Image(); im.src = seen.circle.map; await im.decode();
+    const cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height;
+    const c2 = cv.getContext('2d', { willReadFrequently: true });
+    c2.drawImage(im, 0, 0);
+    const P = c2.getImageData(0, 0, im.width, im.height).data;
+    const mid = Math.floor(im.height / 2), at = (x, y) => (y * im.width + x) * 4;
+    for (let i = 2; i < im.width - 2; i++) {
+      seamG = Math.max(seamG, Math.abs(P[at(i, mid - 1) + 1] - P[at(i, mid) + 1]));
+      seamR = Math.max(seamR, Math.abs(P[at(mid - 1, i)] - P[at(mid, i)]));
+    }
+    check('circle direction field has no seam on the axes', seamG <= 12 && seamR <= 12,
+          `worst jump across the axis — G ${seamG}, R ${seamR} (was ≈ 114 before the cap fix)`);
+  } catch (e) { check('circle direction field has no seam on the axes', false, 'could not read the map back: ' + e.message); }
+
+  // `dispersion` is a fraction of the displacement, so a thick lens used to pull the channels tens of
+  // pixels apart and paint a radial rainbow. The separation is clamped to MAX_CA px instead.
+  Hyalite.attach($('thick'), catching('thick', { thickness: 300, bevel: 60, dispersion: 0.5 }));
+  await wait(80);
+  const kf = filterOf(v($('thick')));
+  const ks = kf ? Array.from(kf.querySelectorAll('feDisplacementMap')).map((n) => +n.getAttribute('scale')) : [];
+  const sep = ks.length >= 4 ? (ks[ks.length - 1] - ks[ks.length - 2]) / 2 : NaN;
+  // what it would have been: the outer pass carries all of the aberration, so disp is scaled up by 1/split
+  const rawSep = seen.thick && ks.length >= 4 ? ks[ks.length - 2] * Math.min(0.95, 0.5 / seen.thick.split) / 2 : NaN;
+  check('chromatic separation is capped on a thick lens', sep > 0 && sep <= 3.01,
+        `separation ${Number.isFinite(sep) ? sep.toFixed(2) : '—'}px of a ${seen.thick ? seen.thick.maxDisplacement.toFixed(0) : '?'}px displacement ` +
+        `(cap 3; unclamped ${Number.isFinite(rawSep) ? rawSep.toFixed(1) : '?'}px)`);
 
   // settle: while growing → plain blur; after 120 ms of quiet → url again
   Hyalite.attach($('grow'), O); await wait(60);

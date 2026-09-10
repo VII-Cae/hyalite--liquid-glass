@@ -52,7 +52,7 @@
   .hud{position:absolute;z-index:20;left:16px;top:14px;width:236px;display:flex;flex-direction:column;gap:6px;padding:11px 12px;border-radius:12px;
        background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.12);font:12px/1.3 ui-monospace,Menlo,monospace;color:rgba(255,255,255,.85)}
   .hud h1{margin:0 0 2px;font:600 13px/1.2 system-ui,sans-serif}
-  .hud label{display:grid;grid-template-columns:64px 1fr 40px;align-items:center;gap:7px}
+  .hud label{display:grid;grid-template-columns:72px 1fr 42px;align-items:center;gap:7px}
   .hud label>b{text-align:right;font-weight:400;opacity:.8}
   .hud input[type=range]{width:100%;min-width:0;accent-color:#dfc174;margin:0}
   .hud .btns{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
@@ -68,20 +68,20 @@
     .big{position:static;font-size:22vw;margin:12px 0 4px}
     .slot{position:relative!important;left:auto!important;top:auto!important;width:min(380px,92vw);margin:18px auto 34px;cursor:default}
     .hud{position:static;width:auto;margin:12px}
-    .hud label{grid-template-columns:64px 1fr 40px}.hud input[type=range]{width:100%}
+    .hud label{grid-template-columns:72px 1fr 42px}.hud input[type=range]{width:100%}
   }
 </style></head>
 <body>
 <div class="big">HYALITE</div>
 
-<div class="slot" id="slotA" style="left:8%;top:44%">
+<div class="slot" id="slotA" style="left:25%;top:36%">
   <div class="glass plain">
     <h3>Plain blur</h3><p>backdrop-filter: blur(3px). What most "glassmorphism" is.</p>
     <div class="row"><span class="chip on">Wi-Fi</span><span class="chip">Bluetooth</span><span class="chip">Focus</span></div>
   </div>
   <div class="label">A · plain blur</div>
 </div>
-<div class="slot" id="slotB" style="left:56%;top:44%">
+<div class="slot" id="slotB" style="left:62%;top:36%">
   <div class="glass lens" id="lens">
     <h3>Hyalite</h3><p>Same card, plus a lens map: the edge bends what is behind it.</p>
     <div class="row"><span class="chip on">Wi-Fi</span><span class="chip">Bluetooth</span><span class="chip">Focus</span></div>
@@ -94,12 +94,12 @@
   <label>bevel <input id="bevel" type="range" min="4" max="140" value="41" step="1"><b id="bevelV"></b></label>
   <label>thickness <input id="thickness" type="range" min="2" max="220" value="96" step="1"><b id="thicknessV"></b></label>
   <label>slope <input id="slope" type="range" min="0.3" max="3" value="2.7" step="0.05"><b id="slopeV"></b></label>
-  <label>edge shade <input id="shade" type="range" min="0" max="1" value="0.62" step="0.02"><b id="shadeV"></b></label>
-  <label>edge width <input id="edgeW" type="range" min="0.5" max="24" value="6.5" step="0.5"><b id="edgeWV"></b></label>
-  <label>rim light <input id="rim" type="range" min="0" max="2" value="1.76" step="0.02"><b id="rimV"></b></label>
+  <label>shade <input id="shade" type="range" min="0" max="1" value="0.62" step="0.02"><b id="shadeV"></b></label>
+  <label>edge px <input id="edgeW" type="range" min="0.5" max="24" value="6.5" step="0.5"><b id="edgeWV"></b></label>
+  <label>rim <input id="rim" type="range" min="0" max="2" value="1.76" step="0.02"><b id="rimV"></b></label>
   <label>blur <input id="blur" type="range" min="0" max="12" value="1" step="0.5"><b id="blurV"></b></label>
-  <label>dispersion <input id="dispersion" type="range" min="0" max="3" value="1.6" step="0.05"><b id="dispersionV"></b></label>
-  <label>light dir <input id="light" type="range" min="-180" max="180" value="-140" step="5"><b id="lightV"></b></label>
+  <label>disp px <input id="dispersion" type="range" min="0" max="3" value="1.6" step="0.05"><b id="dispersionV"></b></label>
+  <label>light <input id="light" type="range" min="-180" max="180" value="-140" step="5"><b id="lightV"></b></label>
   <div class="hint" id="readout"></div>
   <div class="btns">
     <button id="swap">swap</button><button id="mat2">materialize</button><a class="btn" href="edge-lab.html">profile lab →</a><button id="grid">grid</button>
@@ -121,7 +121,7 @@
   const D = Hyalite.DEFAULTS;
   const KEYS = ['bevel', 'thickness', 'slope', 'shade', 'edgeW', 'rim', 'blur', 'dispersion', 'light'];
   const FMT = {
-    bevel: (v) => v + 'px', thickness: (v) => v + 'px', slope: (v) => v.toFixed(2) + ' px/px',
+    bevel: (v) => v + 'px', thickness: (v) => v + 'px', slope: (v) => v.toFixed(2),
     shade: (v) => v.toFixed(2), edgeW: (v) => v + 'px', rim: (v) => v.toFixed(2),
     blur: (v) => v + 'px', dispersion: (v) => v.toFixed(2) + 'px', light: (v) => v + '\u00b0',
   };

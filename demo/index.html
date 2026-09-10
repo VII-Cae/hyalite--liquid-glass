@@ -82,7 +82,7 @@
 
 <div class="slot" id="s010" style="left:25%;top:13%">
   <div class="glass old v010" id="g010">
-    <h3>0.1.0</h3><p>Refraction arrives: an SDF per element, Snell for the offsets, a no-fold cap. Shipped conservative — a 16px bevel over 10px of glass.</p>
+    <h3>0.1.0</h3><p>Refraction arrives: an SDF per element, Snell for the offsets, a no-fold cap. Shown at a 25px bevel over 10px of glass.</p>
   </div>
   <div class="label">0.1.0 · it bends</div>
 </div>
@@ -94,7 +94,7 @@
 </div>
 <div class="slot" id="s031" style="left:25%;top:52%">
   <div class="glass old v031" id="g031">
-    <h3>0.3.1</h3><p>The staircase goes: two displacement passes with a blur between them. Circles stop tearing. Same conservative defaults.</p>
+    <h3>0.3.1</h3><p>The staircase goes: two displacement passes with a blur between them. Circles stop tearing, and the glass gets thicker: 19px.</p>
   </div>
   <div class="label">0.3.1 · no stairs</div>
 </div>
@@ -122,7 +122,7 @@
     <label class="file">load image<input id="file" type="file" accept="image/*"></label>
     <button id="reset">reset</button>
   </div>
-  <div class="hint">drag the cards · each shows its own release defaults; the sliders drive 0.4.0 only</div>
+  <div class="hint">drag the cards · each shows what its release was shown at; the sliders drive 0.4.0 only</div>
   <div class="hint" id="sup"></div>
 </div>
 
@@ -164,13 +164,17 @@
   if (!ok) $('#sup').classList.add('warn');
   if (ok) Hyalite.attach(lens, Object.assign({ onBuild: readout }, P));
 
-  /* The three older cards render each engine on *its own* shipped defaults — that is the material
-     that version actually came with, which is the honest thing to compare. Nothing drives them, so
-     they are attached once. The sliders belong to 0.4.0 alone. */
-  const OLD = [['Hyalite010', 'g010'], ['Hyalite020', 'g020'], ['Hyalite031', 'g031']];
-  for (const [name, id] of OLD) {
+  /* Each older card renders on the parameters *its own release was shown at* — recovered from
+     `demo/index.html` at each tag, not from the engine's DEFAULTS. The defaults were always
+     deliberately conservative; what a version looked like is what its playground displayed. */
+  const OLD = [
+    ['Hyalite010', 'g010', { bevel: 25, thickness: 10, blur: 0.5, dispersion: 0.09, rim: 0.3 }],
+    ['Hyalite020', 'g020', { bevel: 25, thickness: 10, blur: 0.5, dispersion: 0.09, rim: 0.3, light: -20 }],
+    ['Hyalite031', 'g031', { bevel: 28, thickness: 19, blur: 1, dispersion: 0.11, rim: 0.3, light: -25, smooth: 0.75 }],
+  ];
+  for (const [name, id, opts] of OLD) {
     const api = window[name];
-    if (api && api.supported()) api.attach($('#' + id), {});
+    if (api && api.supported()) api.attach($('#' + id), opts);
   }
 
   // drag

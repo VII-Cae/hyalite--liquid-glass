@@ -21,14 +21,16 @@
           font:800 260px/1 system-ui,-apple-system,"Helvetica Neue",sans-serif;
           letter-spacing:-.06em;color:rgba(255,255,255,.32);white-space:nowrap}
   .glass{position:absolute;left:50%;top:250px;transform:translateX(-50%);
-         box-sizing:border-box;width:944px;height:296px;border-radius:60px;
+         box-sizing:border-box;width:772px;height:300px;border-radius:60px;
          background:rgba(0,0,0,.10);
-         padding:44px 52px;
+         padding:0 56px;
+         /* the copy sits centred in the card and flush left, not stacked from the top */
+         display:flex;flex-direction:column;justify-content:center;align-items:flex-start;
          backdrop-filter:var(--hyalite, blur(4px));-webkit-backdrop-filter:var(--hyalite, blur(4px));
          box-shadow:var(--hyalite-edge,none), 0 30px 64px rgba(0,0,0,.42)}
-  .glass h2{margin:0 0 14px;font:600 40px/1.1 system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  .glass h2{margin:0 0 15px;font:600 38px/1.15 system-ui,-apple-system,"Helvetica Neue",sans-serif;
             letter-spacing:-.02em;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.45)}
-  .glass p{margin:0;max-width:646px;font:400 24px/1.44 system-ui,-apple-system,sans-serif;
+  .glass p{margin:0;max-width:620px;font:400 23px/1.46 system-ui,-apple-system,sans-serif;text-align:left;
            color:rgba(255,255,255,.9);text-shadow:0 2px 12px rgba(0,0,0,.5)}
   .glass code{font:500 .92em/1 ui-monospace,Menlo,monospace;letter-spacing:-.01em}
   .warn{position:absolute;left:16px;top:12px;font:600 20px/1.3 ui-monospace,monospace;color:#ffb4a2}

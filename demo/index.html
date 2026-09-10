@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>hyalite · playground</title>
-<script src="../hyalite.js"></script>
+<script src="hyalite-0.3.1.js"></script>   <!-- the A card: the previous engine, frozen -->
+<script src="../hyalite.js"></script>      <!-- the B card: the current one -->
 <style>
   html,body{margin:0;height:100%;overflow:hidden}
   body{
@@ -32,21 +33,21 @@
     position:relative;box-sizing:border-box;border-radius:30px;padding:22px 24px 20px;
     /* neutral darkening only: never brighten or saturate what is behind (that is frosted glass, not clear glass) */
     background:rgba(0,0,0,.13);
-    border:1px solid rgba(255,255,255,.10);
+    box-shadow:0 16px 42px rgba(0,0,0,.36);
+  }
+  /* A: 0.3.1 — real refraction, but the edge only bends. Its rim light was an additive white pass
+     painted inside the filter, so it keeps the hand-drawn inset highlights that version relied on. */
+  .glass.prev{border:1px solid rgba(255,255,255,.10);
     box-shadow:0 16px 42px rgba(0,0,0,.36), inset 0 .5px 0 rgba(255,255,255,.42), inset 0 -.5px 0 rgba(255,255,255,.14),
                inset 3px 0 9px -6px rgba(255,255,255,.42), inset -3px 0 9px -6px rgba(255,255,255,.42);
-    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
-  }
-  /* B: the engine writes --hyalite (the filter) and --hyalite-edge (the sharp rim, as inset shadows), so this card
-     drops the hand-drawn highlights A uses — the rim is computed from the geometry, not painted on. */
-  .glass.lens{border-color:transparent;
+    backdrop-filter:var(--hyalite-legacy, blur(3px));-webkit-backdrop-filter:var(--hyalite-legacy, blur(3px))}
+  /* B: 0.4.0 writes --hyalite (the filter) and --hyalite-edge (the sharp rim, as inset shadows), so
+     this card needs no hand-drawn highlights — the rim is computed from the geometry, not painted on. */
+  .glass.lens{
     box-shadow:var(--hyalite-edge,none), 0 16px 42px rgba(0,0,0,.36);
     backdrop-filter:var(--hyalite, blur(3px));-webkit-backdrop-filter:var(--hyalite, blur(3px))}
   .glass h3{margin:0 0 4px;font-size:18px;font-weight:600}
-  .glass p{margin:0 0 14px;font-size:12.5px;opacity:.78}
-  .row{display:flex;gap:8px}
-  .chip{flex:1;padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.14);font-size:12px;text-align:center;border:1px solid rgba(255,255,255,.10)}
-  .chip.on{background:rgba(255,255,255,.86);color:#1b1f1a}
+  .glass p{margin:0;font-size:12.5px;line-height:1.5;opacity:.8}
 
   /* ── HUD ───────────────────────────────────────────────── */
   .hud{position:absolute;z-index:20;left:16px;top:14px;width:236px;display:flex;flex-direction:column;gap:6px;padding:11px 12px;border-radius:12px;
@@ -75,18 +76,16 @@
 <div class="big">HYALITE</div>
 
 <div class="slot" id="slotA" style="left:25%;top:36%">
-  <div class="glass plain">
-    <h3>Plain blur</h3><p>backdrop-filter: blur(3px). What most "glassmorphism" is.</p>
-    <div class="row"><span class="chip on">Wi-Fi</span><span class="chip">Bluetooth</span><span class="chip">Focus</span></div>
+  <div class="glass prev" id="prev">
+    <h3>0.3.1</h3><p>The edge bends what is behind it, at one brightness throughout. Clear, but weightless.</p>
   </div>
-  <div class="label">A · plain blur</div>
+  <div class="label">A · previous engine</div>
 </div>
 <div class="slot" id="slotB" style="left:62%;top:36%">
   <div class="glass lens" id="lens">
-    <h3>Hyalite</h3><p>Same card, plus a lens map: the edge bends what is behind it.</p>
-    <div class="row"><span class="chip on">Wi-Fi</span><span class="chip">Bluetooth</span><span class="chip">Focus</span></div>
+    <h3>0.4.0</h3><p>Same geometry, plus a shaded edge: it darkens where it magnifies, folds, and returns a specular line.</p>
   </div>
-  <div class="label">B · hyalite (one SVG filter)</div>
+  <div class="label">B · current engine</div>
 </div>
 
 <div class="hud">
@@ -106,7 +105,7 @@
     <label class="file">load image<input id="file" type="file" accept="image/*"></label>
     <button id="reset">reset</button>
   </div>
-  <div class="hint">drag the cards · sliders act on B only</div>
+  <div class="hint">drag the cards · the sliders drive both, so the difference is the engine</div>
   <div class="hint" id="sup"></div>
 </div>
 
@@ -139,7 +138,7 @@
   const readout = (i) => { if (i) $('#readout').textContent =
     `max edge offset \u2248 ${i.maxDisplacement.toFixed(1)}px \u00b7 bevel ${i.bevel}px \u00b7 ` +
     `${i.folds ? 'folds (one pass)' : 'no fold (two passes)'}`; };
-  const schedule = () => Hyalite.setOpts(P).then(() => readout(Hyalite.info()));
+  const schedule = () => Hyalite.setOpts(P).then(() => { readout(Hyalite.info()); applyLegacy(); });
 
   const ok = window.Hyalite && Hyalite.supported();
   $('#sup').textContent = ok
@@ -147,6 +146,17 @@
     : 'this browser cannot run SVG backdrop filters \u2014 B is showing the plain-blur fallback';
   if (!ok) $('#sup').classList.add('warn');
   if (ok) Hyalite.attach(lens, Object.assign({ onBuild: readout }, P));
+
+  /* A runs the frozen 0.3.1 on the *same* geometry, so what you see between the cards is the engine,
+     not the parameters. Two of them do not translate: 0.3.1 capped the decay slope at 0.85 (it could
+     not fold), and its `dispersion` was a fraction of the displacement rather than pixels. */
+  const legacyOK = window.HyaliteLegacy && HyaliteLegacy.supported();
+  const toLegacy = () => ({
+    bevel: P.bevel, thickness: P.thickness, blur: P.blur, light: P.light, smooth: 1, rim: 0.45,
+    dispersion: Math.min(0.5, P.dispersion / Math.max(1, Hyalite.info() ? Hyalite.info().maxDisplacement : 40)),
+  });
+  const applyLegacy = () => { if (!legacyOK) return; HyaliteLegacy.detach($('#prev')); HyaliteLegacy.attach($('#prev'), toLegacy()); };
+  if (legacyOK) applyLegacy();
 
   // drag
   for (const slot of document.querySelectorAll('.slot')) {

@@ -8,9 +8,13 @@
 
 **在线：** [试验台](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) · [回归用例](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) —— 用 Chromium 系浏览器打开。
 
-![网格底上的透镜：位移场在四角收成扇形，不折叠、不出棱。](demo/shots/playground-grid.jpg)
+![网格底上的一块玻璃卡片和一个大字：卡片外面的格线是直的，进到边缘就弯了。](demo/shots/card.jpg)
+
+<sub>这张图由 <code>demo/lab-engine.js</code>（0.4.0 试验引擎）渲染：0.3.1 做的是折射，还没有边缘明暗。<a href="demo/card.html">卡片的源码</a>。</sub>
 
 - [`demo/index.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/index.html) 试验台：同一背景上普通模糊 vs hyalite，可拖、可交换，调倒角 / 厚度 / 模糊 / 色散 / 边缘光，切网格底或上传自己的照片。
+  ![网格底上的透镜：位移场在四角收成扇形，不折叠、不出棱。](demo/shots/playground-grid.jpg)
+
 - [`demo/cases.html`](https://vii-cae.github.io/hyalite--liquid-glass/demo/cases.html) 自检页：不对称圆角、椭圆圆角、CSS 相邻角规则、共用滤镜的双胞胎、尺寸分桶、把贴图读回来验四分之一对称、圆形上不出接缝的方向场、厚透镜上被封住的色散分离、流式长高的气泡，以及把封顶后的值真读回来核对（而不是「没抛异常就算过」）。
 - [`demo/run-cases.mjs`](https://github.com/VII-Cae/hyalite--liquid-glass/blob/main/demo/run-cases.mjs) **不是用来打开的页面**，是命令行脚本：把 `cases.html` 放进真正的 headless Chromium 里跑，打印红绿并带退出码。`npm test`，或者 `node demo/run-cases.mjs`（Node 22+，零依赖）。**故意用真实时间**——`--virtual-time-budget` 只快进定时器、不保证出帧，而其中两条用例等的正是帧里才会发生的事（`requestAnimationFrame` 的渐入、`ResizeObserver` 的回退），虚拟时间下它们会报假的失败。
 

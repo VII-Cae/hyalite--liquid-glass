@@ -2,6 +2,7 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>hyalite · 剖面台</title>
 <script src="../hyalite.js?v=0.5.0"></script>
+<script src="mark.js?v=0.5.0"></script>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#0b1016}
   body{font:13px/1.45 system-ui,-apple-system,"PingFang SC",sans-serif;color:#eee}
@@ -24,6 +25,9 @@
   .glass p{margin:0;font-size:12px;opacity:.75}
   .glass .bar{margin-top:14px;height:26px;border-radius:13px;background:rgba(255,255,255,.16)}
   .glass .bar i{display:block;height:100%;width:52%;border-radius:13px;background:rgba(255,255,255,.8)}
+  /* 落款：刻在每块玻璃的底边里，截去别的也截不掉它 */
+  .glass .sig{position:absolute;right:18px;bottom:6px;font:9.5px/1 ui-monospace,Menlo,monospace;font-style:normal;
+              letter-spacing:.06em;color:rgba(255,255,255,.42)}
 
   .dots{position:absolute;left:28%;top:52%;display:flex;gap:26px}
   .dot{position:relative;width:132px;height:132px;border-radius:50%;box-sizing:border-box;
@@ -73,11 +77,11 @@
 </style></head><body>
 
 <div id="stage">
-  <div class="slot"><div class="glass" id="g0"><h3>circle</h3><p>四分之一圆，最陡</p><div class="bar"><i></i></div></div>
+  <div class="slot"><div class="glass" id="g0"><h3>circle</h3><p>四分之一圆，最陡</p><div class="bar"><i></i></div><i class="sig">hyalite · VII-Cae (VII)</i></div>
     <div class="tag">circle</div></div>
-  <div class="slot"><div class="glass" id="g1"><h3>squircle</h3><p>接平板接得更缓</p><div class="bar"><i></i></div></div>
+  <div class="slot"><div class="glass" id="g1"><h3>squircle</h3><p>接平板接得更缓</p><div class="bar"><i></i></div><i class="sig">hyalite · VII-Cae (VII)</i></div>
     <div class="tag">squircle</div></div>
-  <div class="slot"><div class="glass" id="g2"><h3>lip</h3><p>外凸内凹，多一组明暗带</p><div class="bar"><i></i></div></div>
+  <div class="slot"><div class="glass" id="g2"><h3>lip</h3><p>外凸内凹，多一组明暗带</p><div class="bar"><i></i></div><i class="sig">hyalite · VII-Cae (VII)</i></div>
     <div class="tag">lip</div></div>
   <div class="dots">
     <div class="dot" id="d0"><b>1</b><i>circle</i></div>

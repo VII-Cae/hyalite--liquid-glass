@@ -33,6 +33,9 @@
   .glass p{margin:0;max-width:620px;font:400 23px/1.46 system-ui,-apple-system,sans-serif;text-align:left;
            color:rgba(255,255,255,.9);text-shadow:0 2px 12px rgba(0,0,0,.5)}
   .glass code{font:500 .92em/1 ui-monospace,Menlo,monospace;letter-spacing:-.01em}
+  /* the signature, engraved in the card's lower right: the README image travels with its source */
+  .glass .sig{position:absolute;right:44px;bottom:22px;font:500 16px/1 ui-monospace,Menlo,monospace;font-style:normal;
+              letter-spacing:.08em;color:rgba(255,255,255,.66);text-shadow:0 1px 8px rgba(0,0,0,.5)}
   .warn{position:absolute;left:16px;top:12px;font:600 20px/1.3 ui-monospace,monospace;color:#ffb4a2}
 </style></head>
 <body>
@@ -41,6 +44,7 @@
 <div class="glass" id="glass">
   <h2>Refraction, not diffusion</h2>
   <p>Rounded-rect SDF → Snell’s law → one <code>feDisplacementMap</code>. The edge magnifies the backdrop, shades where it magnifies, and returns a specular line.</p>
+  <i class="sig">VII-Cae (VII) · github.com/VII-Cae/hyalite--liquid-glass</i>
 </div>
 <script>
 (() => {

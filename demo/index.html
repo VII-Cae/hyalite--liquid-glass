@@ -5,6 +5,7 @@
 <script src="legacy/hyalite-0.2.0.js?v=0.5.0"></script>
 <script src="legacy/hyalite-0.3.1.js?v=0.5.0"></script>
 <script src="../hyalite.js?v=0.5.0"></script>
+<script src="mark.js?v=0.5.0"></script>
 <style>
   html,body{margin:0;height:100%;overflow:hidden}
   body{
@@ -24,6 +25,10 @@
   body.photo{background-image:var(--photo)}
   .big{position:absolute;left:0;right:0;top:38%;text-align:center;font-size:min(150px,14vw);font-weight:800;letter-spacing:-.04em;
        color:rgba(255,255,255,.85);white-space:nowrap;pointer-events:none}
+  /* The mark: the repository as a masthead line over the word, part of the scene. It gets recorded
+     with the word and bent by any card dragged across it — a clip of this page carries its own way
+     back here. Above rather than below because the lower row of cards sits on the word's feet. */
+  .big small{position:absolute;left:0;right:0;top:1em;font:500 min(16px,1.2vw)/1 ui-monospace,Menlo,monospace;letter-spacing:.22em;opacity:.8}
   body.grid .big{color:rgba(255,255,255,.35)}
 
   /* ── the glass ─────────────────────────────────────────── */
@@ -53,6 +58,9 @@
     backdrop-filter:var(--hyalite, blur(3px));-webkit-backdrop-filter:var(--hyalite, blur(3px))}
   .glass h3{margin:0 0 4px;font-size:18px;font-weight:600}
   .glass p{margin:0;font-size:12.5px;line-height:1.5;opacity:.8}
+  /* the signature, engraved in the bottom padding of every card — a zoomed-in clip still has it */
+  .glass .sig{position:absolute;right:20px;bottom:7px;font:9.5px/1 ui-monospace,Menlo,monospace;font-style:normal;
+              letter-spacing:.06em;color:rgba(255,255,255,.42)}
 
   /* ── HUD ───────────────────────────────────────────────── */
   .hud{position:absolute;z-index:20;left:16px;top:14px;width:236px;display:flex;flex-direction:column;gap:6px;padding:11px 12px;border-radius:12px;
@@ -68,39 +76,46 @@
   .hud .hint{opacity:.6}
   .hud .warn{color:#ffb4a2}
   .hud input[type=file]{display:none}
+  /* laptops: the HUD would otherwise sit on the word's first letter and on the byline */
+  @media (max-width: 1180px) and (min-width: 761px){ .big{left:268px} }
   /* phones: stack everything, no absolute positioning */
   @media (max-width: 760px){
     body{overflow:auto;height:auto;min-height:100vh}
     .big{position:static;font-size:22vw;margin:12px 0 4px}
+    .big small{position:static;display:block;font-size:11px;margin-bottom:6px}
     .slot{position:relative!important;left:auto!important;top:auto!important;width:min(380px,92vw);margin:18px auto 34px;cursor:default}
     .hud{position:static;width:auto;margin:12px}
     .hud label{grid-template-columns:72px 1fr 42px}.hud input[type=range]{width:100%}
   }
 </style></head>
 <body>
-<div class="big">HYALITE</div>
+<div class="big">HYALITE<small>VII-Cae (VII) · github.com/VII-Cae/hyalite--liquid-glass</small></div>
 
 <div class="slot" id="s010" style="left:25%;top:13%">
   <div class="glass old v010" id="g010">
     <h3>0.1.0</h3><p>Refraction arrives: an SDF per element, Snell for the offsets, a no-fold cap. Shown at a 25px bevel over 10px of glass.</p>
+    <i class="sig">hyalite · VII-Cae (VII)</i>
   </div>
   <div class="label">0.1.0 · it bends</div>
 </div>
 <div class="slot" id="s020" style="left:60%;top:13%">
   <div class="glass old v020" id="g020">
     <h3>0.2.0</h3><p>Same picture, built cheaply: two-level cache, size buckets, the CSS corner rule. Adds a light direction — the only part of it you can see.</p>
+    <i class="sig">hyalite · VII-Cae (VII)</i>
   </div>
   <div class="label">0.2.0 · same, but cached</div>
 </div>
 <div class="slot" id="s031" style="left:25%;top:52%">
   <div class="glass old v031" id="g031">
     <h3>0.3.1</h3><p>The staircase goes: two displacement passes with a blur between them. Circles stop tearing, and the glass gets thicker: 19px.</p>
+    <i class="sig">hyalite · VII-Cae (VII)</i>
   </div>
   <div class="label">0.3.1 · no stairs</div>
 </div>
 <div class="slot" id="s040" style="left:60%;top:52%">
   <div class="glass lens" id="lens">
     <h3>0.5.0</h3><p>0.4.0 made the edge darken where it magnifies, fold, and return a specular line. 0.5.0 keeps it on: resize this card, or hit materialize — no frost, no white hairline.</p>
+    <i class="sig">hyalite · VII-Cae (VII)</i>
   </div>
   <div class="label">0.5.0 · shaded, and never off</div>
 </div>
@@ -121,6 +136,7 @@
     <button id="mat2">materialize</button><a class="btn" href="edge-lab.html">profile lab →</a><button id="grid">grid</button>
     <label class="file">load image<input id="file" type="file" accept="image/*"></label>
     <button id="reset">reset</button>
+    <a class="btn" href="https://github.com/VII-Cae/hyalite--liquid-glass" target="_blank" rel="noopener">github ↗</a>
   </div>
   <div class="hint">drag the cards · each shows what its release was shown at; the sliders drive 0.5.0 only</div>
   <div class="hint" id="sup"></div>

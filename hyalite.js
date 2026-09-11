@@ -1,6 +1,6 @@
 /*!
  * hyalite v0.5.0 — real refraction "liquid glass" for the web.
- * https://github.com/VII-Cae/hyalite--liquid-glass · MIT © 2026 VII-Cae
+ * https://github.com/VII-Cae/hyalite--liquid-glass · MIT © 2026 VII-Cae (VII)
  *
  * How it works
  *   The element is treated as a slab of glass with a bevelled edge. For its exact size and corner

@@ -1,5 +1,5 @@
 /*!
- * hyalite v0.4.0 — real refraction "liquid glass" for the web.
+ * hyalite v0.5.0 — real refraction "liquid glass" for the web.
  * https://github.com/VII-Cae/hyalite--liquid-glass · MIT © 2026 VII-Cae
  *
  * How it works
@@ -59,9 +59,12 @@
  *                Only the bevel ring sees it, never the centre. Ignored when the field folds
  *                (`slope` > 1), where no two-pass split exists. `0` = one pass, no hiding
  *   materialize  ms — on attach, ramp displacement, shade and rim from 0 (Apple's "materialize")
- *   settle       ms — while an element keeps resizing it shows a plain blur; `settle` ms after the
- *                last change the map is rebuilt once and the refraction ramps back in.
- *                0 = live mode: throttled rebuilds (≤ 1 per 90 ms) with the old map stretched meanwhile.
+ *   settle       ms — coalesce resizes: rebuild once, `settle` ms after the last size change. Until
+ *                then the browser stretches the current map over the new box (the filter region
+ *                follows the element), so the glass never drops out. 0 = live: the first change of a
+ *                burst rebuilds before that frame paints, then at most one rebuild per 90 ms while
+ *                the size keeps moving, and a last one once it stops. Live is right for anything that
+ *                grows in steps (a chat bubble); `settle` is for a box someone is dragging
  *   self         true when the element uses `filter:` on itself instead of `backdrop-filter`
  *                (displacement only: no blur, no dispersion, no shading — see notes)
  *   onBuild(info) called after every *map* build (a filter rebuilt from a cached map does not build one)
@@ -87,6 +90,20 @@
  *   5. The filter chain interpolates in sRGB, so a linear-light ratio has to be re-encoded before it
  *      is multiplied in. Skipping that (^1/2.2) turns a caustic gain of 0.15 into a near-black
  *      outline instead of a shade.
+ *   6. Never leave the glass on a resize. Until 0.4.0 the filter region was pinned to the size the
+ *      map was built for, so the moment a chat bubble grew a line Chromium painted it unfiltered,
+ *      and the "settle" mode papered over that with a plain blur plus a ramp back — which is a
+ *      lens → frost → lens flicker at every pause in a streaming reply. The region is now the
+ *      element's own box (objectBoundingBox), so between rebuilds the old map is merely stretched,
+ *      and the rebuild itself is a single-frame swap: a freshly built filter renders correctly on
+ *      its first frame, verified frame by frame.
+ *   7. Pin the blurred backdrop opaque before the dispersion sum. The backdrop a reference filter
+ *      receives ends at the element's box, so the blur fades the outermost rows to partial alpha,
+ *      and summing three premultiplied channel passes there clamps the alpha while tripling the
+ *      colour — a white hairline along the rim on the frames where the rim still samples its own
+ *      boundary (the start of a materialize ramp). One feColorMatrix that sets alpha to 1 keeps the
+ *      blurred colour and drops the fade; not applied in `self` mode, where the source is meant to
+ *      be translucent.
  *
  * Caching, in two levels
  *   A *map* depends on geometry + bevel + thickness + slope + shape + shade + rim + edgeW + light;
@@ -133,7 +150,7 @@
      staircase Chromium's nearest-neighbour sampler leaves behind. */
   const DEFAULTS = { bevel: 37, thickness: 59, slope: 2.7, shape: 'squircle', blur: 1, dispersion: 1.6,
                      shade: 0.46, rim: 1.76, edgeW: 8, sat: 0.86, edge: 0.32, light: -140, smooth: 1,
-                     materialize: 0, settle: 120, self: false };
+                     materialize: 0, settle: 0, self: false };
   const LIMITS = { bevel: [1, 400], thickness: [0, 400], slope: [0.2, 4], blur: [0, 64], dispersion: [0, 8],
                    shade: [0, 2], rim: [0, 4], edgeW: [0.5, 64], sat: [0, 3], edge: [0, 2], light: [-180, 180],
                    smooth: [0, 4], materialize: [0, 10000], settle: [0, 10000] };
@@ -148,8 +165,7 @@
   const SHARP = 44;                // exponent of the tight specular line
   const LIP = 0.3;                 // how far the lip profile dips in the middle
   const AA_SLOPE = 0.3;            // rule 4: the ring blur is fully on where the inner pass still stretches ≥ ~1.4×
-  const LIVE_MIN_MS = 90;          // live mode: throttle for continuous resizes
-  const SETTLE_RAMP_MS = 160;      // after a settle rebuild the refraction ramps back in
+  const LIVE_MIN_MS = 90;          // live mode: at most one rebuild per this many ms while the size keeps moving
   const MAX_MAP_PX = 320000;       // ≈ 565×565: larger elements get a downsampled map
   const QZ = 1.02, QZ_MIN = 64;    // map size buckets: ≤ 2 % per side; elements this small stay exact
   const LOG_QZ = Math.log(QZ);
@@ -368,12 +384,17 @@
 
   /* Assemble a <filter>: map → blur → [inner displacement → ring blur (rule 4)] → outer displacement
      (one pass per channel when dispersion > 0) → the edge profile, shade first then light.
-     `self` mode is displacement only (see notes). */
-  function buildFilter(id, W, H, map, o) {
-    const f = prim('filter', { id, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse',
-                               x: 0, y: 0, width: W, height: H, 'color-interpolation-filters': 'sRGB' });
+     `self` mode is displacement only (see notes).
+     The region is the element's own box (objectBoundingBox 0 0 1 1), not the pixel size the map was
+     built for: a feImage with no subregion of its own fills the region, and `preserveAspectRatio:
+     none` stretches the map to it — so an element that grows keeps its glass, stretched, until the
+     next rebuild (rule 6). The primitives stay in user space: blur radii and displacement scales
+     are pixels. */
+  function buildFilter(id, map, o) {
+    const f = prim('filter', { id, filterUnits: 'objectBoundingBox', primitiveUnits: 'userSpaceOnUse',
+                               x: 0, y: 0, width: 1, height: 1, 'color-interpolation-filters': 'sRGB' });
     const image = (url, result) => {
-      const img = prim('feImage', { x: 0, y: 0, width: W, height: H, preserveAspectRatio: 'none', result });
+      const img = prim('feImage', { preserveAspectRatio: 'none', result });
       img.setAttribute('href', url);
       img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', url);
       return img;
@@ -385,7 +406,16 @@
                                                 xChannelSelector: 'R', yChannelSelector: 'G' }));
       return f;
     }
-    f.appendChild(prim('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: o.blur, result: 'soft' }));
+    f.appendChild(prim('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: o.blur, result: 'softA' }));
+    /* Rule 7: the backdrop handed to a reference filter stops dead at the element's box, so the blur
+       fades its outermost rows into transparency. The dispersion pass sums three premultiplied
+       images, which is only exact for opaque pixels — on those rows the alpha is clamped and the
+       colour comes out up to three times too bright: a white hairline along the rim whenever the
+       rim samples its own boundary, i.e. while the displacement is still near zero at the start of
+       a materialize ramp (one or two frames, caught on a frame-by-frame recording of the island).
+       feColorMatrix works on unpremultiplied colour, so pinning alpha to 1 here keeps the blurred
+       colour and simply drops the fade — the rows are extended, not darkened. */
+    f.appendChild(prim('feColorMatrix', { in: 'softA', type: 'matrix', values: '1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0 1', result: 'soft' }));
     let src = 'soft', scale = S;
     if (map.twoPass && o.smooth > 0) {                             // rule 4: inner pass, ring blur, then the outer pass
       f.appendChild(image(map.inner.url, 'inner'));
@@ -543,7 +573,7 @@
     if (!rec) {
       const id = 'hyalite-' + (++seq);
       const map = acquireMap(W, H, radii, o);
-      rec = { id, refs: 0, el: buildFilter(id, W, H, map, o), mapKey: map.key };
+      rec = { id, refs: 0, el: buildFilter(id, map, o), mapKey: map.key };
       ensureHost().appendChild(rec.el);
       filters.set(key, rec);
     }
@@ -557,7 +587,6 @@
   }
 
   const setFallback = (el, st) => el.style.setProperty(VAR, st.opts.self ? 'none' : `blur(${st.opts.blur}px)`);
-  const supportsEdge = () => true;   // the CSS rim needs no engine support; it ships everywhere
   const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
 
   /* (Re)build for the current geometry and point the element at its filter. `ramp` > 0 animates in. */
@@ -595,10 +624,12 @@
     shadeN.forEach((n) => n.setAttribute('tableValues', '1 1 1'));   // 1 = multiply by one = no shade
     ensureHost().appendChild(tmp);
     el.style.setProperty(VAR, `url(#${tmp.id})`);
-    const key = st.key, t0 = performance.now();
+    const key = st.key;
+    let t0 = -1;      // taken from the first frame's own clock: a rAF timestamp can trail performance.now(), and a negative t would flip the displacement outward for a frame
     const step = (now) => {
-      // rebuilt, detached or resizing meanwhile: whoever did that owns the variable now
-      if (bound.get(el) !== st || st.key !== key || st.settling) { tmp.remove(); return; }
+      // rebuilt or detached meanwhile: whoever did that owns the variable now
+      if (bound.get(el) !== st || st.key !== key) { tmp.remove(); return; }
+      if (t0 < 0) t0 = now;
       const t = Math.min(1, (now - t0) / ms), k = 1 - Math.pow(1 - t, 3);
       dms.forEach(({ n, s }) => n.setAttribute('scale', (s * k).toFixed(2)));
       if (litN) litN.setAttribute('slope', k.toFixed(3));
@@ -609,17 +640,20 @@
     requestAnimationFrame(step);
   }
 
-  /* Size changes. settle > 0: drop to a plain blur at once, rebuild once the size has been stable
-     for `settle` ms, ramp back in. settle = 0: throttled live rebuilds. */
+  /* Size changes (rule 6: the glass stays on throughout — the region follows the element, so the
+     current map is stretched until the rebuild). settle > 0 coalesces: one rebuild, `settle` ms
+     after the last change. settle = 0 is live: the first change of a burst rebuilds right here,
+     inside the ResizeObserver callback — that runs after layout and before paint, so the frame that
+     shows the new size already shows the new map; while changes keep coming they are throttled to
+     one rebuild per LIVE_MIN_MS, and a trailing one lands after the last of them. */
   function onResize(el) {
     const st = bound.get(el);
     if (!st) return;
     const [W, H] = sizeOf(el);
     if (W === st.w && H === st.h) return;            // the observer's initial notification, or no real change
     if (st.opts.settle > 0) {
-      if (!st.settling) { st.settling = true; setFallback(el, st); }
       clearTimeout(st.timer);
-      st.timer = setTimeout(() => { st.timer = 0; st.settling = false; apply(el, SETTLE_RAMP_MS); }, st.opts.settle);
+      st.timer = setTimeout(() => { st.timer = 0; apply(el, 0); }, st.opts.settle);
     } else schedule(el);
   }
   function schedule(el) {
@@ -627,17 +661,19 @@
     if (!st) return;
     if (st.timer) { st.pending = true; return; }
     const wait = Math.max(0, LIVE_MIN_MS - (performance.now() - (st.last || 0)));
-    st.timer = setTimeout(() => {
+    const run = () => {
       st.timer = 0; st.last = performance.now();
       apply(el, 0);
       if (st.pending) { st.pending = false; schedule(el); }
-    }, wait);
+    };
+    if (wait === 0) return run();                    // synchronous: before this frame paints
+    st.timer = setTimeout(run, wait);
   }
 
   function attach(el, opts, watcher) {
     if (bound.has(el) || !supported()) return;      // unsupported: write nothing, the CSS fallback wins
     const st = { key: '', opts: sanitize(Object.assign({}, DEFAULTS, opts || {})), ro: null, timer: 0, pending: false,
-                 last: 0, settling: false, w: 0, h: 0, watcher: watcher || null };
+                 last: 0, w: 0, h: 0, watcher: watcher || null };
     bound.set(el, st);
     apply(el, st.opts.materialize);
     st.ro = new ResizeObserver(() => onResize(el));
@@ -767,7 +803,7 @@
   };
   function force(v) { forced = (v === null || v === undefined) ? null : !!v; supportedMemo = null; return supported(); }
 
-  const API = { watch, unwatch, attach, detach, refresh, setOpts, info, supported, force, DEFAULTS, version: '0.4.0' };
+  const API = { watch, unwatch, attach, detach, refresh, setOpts, info, supported, force, DEFAULTS, version: '0.5.0' };
   root.Hyalite = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);

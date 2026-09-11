@@ -39,7 +39,7 @@ export interface HyaliteOptions {
   /** light direction in degrees: 0 = straight above, positive = clockwise */ light?: number;
   /** px: blur that hides Chromium's nearest-neighbour staircase along the rim, inside the bevel ring only. Ignored when the field folds. 0 = one pass */ smooth?: number;
   /** ms: ramp displacement, shade and rim from 0 on attach */ materialize?: number;
-  /** ms of size stability before a rebuild (0 = live throttled rebuilds) */ settle?: number;
+  /** ms — coalesce resizes into one rebuild after the last change; the glass stays on (stretched) meanwhile. 0 = live: first change rebuilt before its frame paints, then ≤ 1 rebuild / 90 ms */ settle?: number;
   /** the element filters itself (`filter:`) instead of its backdrop — displacement only */ self?: boolean;
   /** called after every *map* build; a filter rebuilt from a cached map does not build one */
   onBuild?: (info: HyaliteInfo) => void;

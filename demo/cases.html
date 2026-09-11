@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>hyalite · cases</title>
-<script src="../hyalite.js?v=0.4.0"></script>
+<script src="../hyalite.js?v=0.5.0"></script>
 <style>
   body{margin:0;min-height:100vh;color:#f2efe6;font:14px/1.45 system-ui,sans-serif;background:#1d2a1f;
        background-image:repeating-linear-gradient(0deg,transparent 0 11px,rgba(255,255,255,.55) 11px 12px),repeating-linear-gradient(90deg,transparent 0 11px,rgba(255,255,255,.55) 11px 12px)}
@@ -88,7 +88,7 @@
   const bRef = v($('twinB'));
   check('twins share the canonical filter', aRef && /-m\d+\)$/.test(bRef) && bRef.replace(/-m\d+\)$/, ')') === aRef, `A ${aRef} · B ${bRef}`);
   check('A untouched during B ramp', scaleOf(aRef) === aScale, `A scale ${aScale} → ${scaleOf(aRef)}`);
-  await until(() => v($('twinB')) === aRef, 2000);
+  await until(() => v($('twinB')) === aRef, 6000);   // the ramp clock starts at its first frame, and a runner frame can take 100 ms+ with this many surfaces
   check('B lands on the shared filter', v($('twinB')) === aRef, v($('twinB')));
 
   // two-level cache: sizes within one bucket share a map, and blur never invalidates one
@@ -190,22 +190,49 @@
         /inset/.test(edgeVar) && $('noedge').style.getPropertyValue('--hyalite-edge') === 'none',
         `${(edgeVar.split(',')[0] || '—').trim()} … · edge:0 → ${$('noedge').style.getPropertyValue('--hyalite-edge')}`);
 
-  // settle: while growing → plain blur; after 120 ms of quiet → url again
+  /* Rule 6: a growing element never leaves the glass. Until 0.4.0 it dropped to a plain blur while
+     it grew and ramped back after `settle` ms of quiet — a lens → frost → lens flicker at every pause
+     in a streaming reply. Now the filter region is the element's own box, the first change of a burst
+     rebuilds inside the ResizeObserver callback (before that frame paints), and the rest are throttled.
+     Watch the variable on the frame each resize lands, not after a sleep. */
   Hyalite.attach($('grow'), O); await wait(60);
-  let sawFallback = false;
-  /* Check on the frame the resize lands, not after a sleep: the fallback only holds until `settle`
-     ms of quiet, and on the runner's software rasteriser a 60 ms sleep can really take 200, which
-     lets the rebuild happen before we look and reports a false failure. */
   const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
-  const peek = () => { if (/^blur/.test(v($('grow')))) sawFallback = true; };
+  const idBefore = v($('grow'));
+  let sawFallback = false, sawSync = false;
+  const ro = new ResizeObserver(() => { if (/^url/.test(v($('grow'))) && v($('grow')) !== idBefore) sawSync = true; });
+  ro.observe($('grow'));       // registered after Hyalite's own observer, so it runs after the engine's callback in the same frame
   for (let i = 0; i < 12; i++) {
     $('growText').textContent += 'more words arrive and the bubble grows taller ';
-    await frame(); peek();
-    await wait(40); peek();
+    await frame(); if (/^blur/.test(v($('grow')))) sawFallback = true;
+    await wait(40); if (/^blur/.test(v($('grow')))) sawFallback = true;
   }
-  check('growing element falls back to plain blur', sawFallback, v($('grow')));
-  await until(() => /^url\(#hyalite-\d+\)$/.test(v($('grow'))), 2000);   // settled, rebuilt, and the ramp is over
-  check('rebuilt after it settled', /^url/.test(v($('grow'))), v($('grow')));
+  ro.disconnect();
+  check('growing element never drops to plain blur', !sawFallback && /^url/.test(v($('grow'))), v($('grow')));
+  check('the first change of a burst is rebuilt before its frame paints', sawSync, sawSync ? 'new filter seen inside the same ResizeObserver pass' : 'still the old filter when the frame painted');
+  await until(() => v($('grow')) !== idBefore, 2000);
+  check('rebuilt for the new size', v($('grow')) !== idBefore, `${idBefore} → ${v($('grow'))}`);
+  const gf = filterOf(v($('grow')));
+  check('the filter region follows the element (objectBoundingBox 0 0 1 1, feImage fills it)',
+        !!gf && gf.getAttribute('filterUnits') === 'objectBoundingBox' && gf.getAttribute('width') === '1' &&
+        Array.from(gf.querySelectorAll('feImage')).every((im) => !im.hasAttribute('width') && im.getAttribute('preserveAspectRatio') === 'none'),
+        gf ? `filterUnits ${gf.getAttribute('filterUnits')} · ${gf.querySelectorAll('feImage[width]').length} feImage with a fixed width` : 'no filter');
+  /* settle > 0: the glass stays on through the changes and one rebuild lands for the final size.
+     Not asserted: *when* it lands. On the runner's software rasteriser a frame can outlast any
+     sensible settle window, so timing here would only measure the machine. */
+  const coal = document.body.appendChild(Object.assign(document.createElement('div'), { className: 'glass twin' }));
+  coal.style.height = '80px';
+  let coalBuild = null;
+  Hyalite.attach(coal, Object.assign({}, O, { settle: 150, onBuild: (i) => { coalBuild = i; } })); await wait(60);
+  const coalBefore = v(coal);
+  let coalDropped = false;
+  const peekCoal = () => { if (!/^url/.test(v(coal))) coalDropped = true; };
+  coal.style.height = '110px'; await frame(); peekCoal(); await wait(50); peekCoal();
+  coal.style.height = '140px'; await frame(); peekCoal();
+  await until(() => v(coal) !== coalBefore, 2000); peekCoal();
+  check('settle keeps the glass on through resizes and rebuilds for the final size',
+        !coalDropped && v(coal) !== coalBefore && !!coalBuild && coalBuild.mapSize[1] >= 140,
+        `${coalBefore} → ${v(coal)} · last map ${coalBuild ? coalBuild.mapSize.join('×') : '—'} for 220×140${coalDropped ? ' · DROPPED to blur' : ''}`);
+  Hyalite.detach(coal); coal.remove();
 
   // clamps — read the values back rather than trusting that nothing threw
   const probe = document.body.appendChild(Object.assign(document.createElement('div'), { className: 'glass twin' }));
@@ -219,6 +246,15 @@
   check('dispersion 99 clamps to 8px of separation', ps.length === 3 && Math.abs((ps[2] - ps[1]) / 2 - 8) < 0.02, `separation ${ps.length === 3 ? ((ps[2] - ps[1]) / 2).toFixed(2) : '—'}px`);
   check('rim −1 clamps to 0 (no light in the profile)', !!seen.probe && seen.probe.profile.edge.every((e) => e <= 1e-9), seen.probe ? `max edge ${Math.max(...seen.probe.profile.edge).toFixed(3)} (≤ 0 = shade only)` : 'no build');
   check('smooth 0 is one pass', !!pf && pf.querySelectorAll('feImage').length === 1 && ps.length === 3, pf && `${pf.querySelectorAll('feImage').length} feImage · ${ps.length} feDisplacementMap`);
+  /* Rule 7: the blurred backdrop is pinned opaque before the channel passes sample it. The blur fades
+     the outermost rows of the backdrop into transparency (the backdrop stops at the element's box),
+     and the three-pass dispersion sum triples premultiplied colour where alpha < 1 — a white
+     hairline on the frames where the rim samples its own boundary. */
+  const pin = pf && pf.querySelector('feColorMatrix[result="soft"]');
+  const blurThenPin = !!pin && !!pin.previousElementSibling && pin.previousElementSibling.tagName === 'feGaussianBlur' && pin.getAttribute('in') === pin.previousElementSibling.getAttribute('result');
+  check('the blurred backdrop is pinned opaque before dispersion samples it',
+        blurThenPin && /0 0 0 0 1\s*$/.test(pin.getAttribute('values')),
+        pin ? `${pin.getAttribute('in')} → alpha row "${pin.getAttribute('values').trim().split(/\s{2,}/).pop()}"` : 'no pin node');
 
   /* Rule 4: where the field does not fold it is split into two displacement passes whose tables
      compose back to the one-pass field — inner(x + split·m(x)) + split·m(x) = m(x). Once it folds
